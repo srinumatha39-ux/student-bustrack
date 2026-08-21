@@ -1,27 +1,16 @@
-// Unified API & Data Access Service with Built-in Offline / Vercel Standalone Mode Fallback
+// Unified API & Data Access Service with Permanent LocalStorage Persistence
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-// Initial Demo Seed Data
-const INITIAL_DEMO_DATA = {
-  colleges: [], // Admin-created colleges list
-  buses: [],
-  admins: [],
-  drivers: [],
-  students: [],
-  reports: []
-};
 
 function getLocalData(key) {
   const stored = localStorage.getItem(`bus_app_${key}`);
   if (!stored) {
-    localStorage.setItem(`bus_app_${key}`, JSON.stringify(INITIAL_DEMO_DATA[key] || []));
-    return INITIAL_DEMO_DATA[key] || [];
+    return [];
   }
   try {
     return JSON.parse(stored);
   } catch {
-    return INITIAL_DEMO_DATA[key] || [];
+    return [];
   }
 }
 
