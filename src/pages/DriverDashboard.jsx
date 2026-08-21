@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
+import { api } from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import ReportModal from '../components/ReportModal';
 import CartoonBus from '../components/CartoonBus';
-import {
-  Play, Square, AlertOctagon, Clock, Radio
-} from 'lucide-react';
+import { Play, Square, AlertOctagon, Clock, Radio, Bus } from 'lucide-react';
 
 export default function DriverDashboard() {
   const { user } = useAuth();
@@ -14,9 +13,30 @@ export default function DriverDashboard() {
 
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [useDemoSimulation, setUseDemoSimulation] = useState(false);
+  const [collegeBuses, setCollegeBuses] = useState([]);
+  const [selectedBusId, setSelectedBusId] = useState('');
 
-  const assignedBus = user?.assigned_bus || {
-    id: 'b1',
+  useEffect(() => {
+    loadCollegeBuses();
+  }, [user]);
+
+  const loadCollegeBuses = async () => {
+    const data = await api.get('/api/buses');
+    if (Array.isArray(data)) {
+      const userCollegeBuses = data.filter(b => !user?.college_id || b.college_id === user.college_id || b.college_id === 'DEFAULT');
+      setCollegeBuses(userCollegeBuses);
+      
+      const assigned = userCollegeBuses.find(b => b.id === user?.assigned_bus_id || b.driver_id === user?.driver_id);
+      if (assigned) {
+        setSelectedBusId(assigned.id);
+      } else if (userCollegeBuses.length > 0) {
+        setSelectedBusId(userCollegeBuses[0].id);
+      }
+    }
+  };
+
+  const selectedBusObj = collegeBuses.find(b => b.id === selectedBusId) || user?.assigned_bus || {
+    id: selectedBusId || 'b1',
     bus_number: 'AP-31-1234',
     bus_name: 'Campus Shuttle #1',
     route_name: 'Anakapalle → College Campus Gate',
@@ -30,7 +50,8 @@ export default function DriverDashboard() {
   };
 
   const handleStartTrip = () => {
-    startTrip(assignedBus.id, user?.driver_id || 'DRV-01', assignedBus.estimated_time || 60, useDemoSimulation);
+    const targetBusId = selectedBusObj.id || 'b1';
+    startTrip(targetBusId, user?.driver_id || 'DRV-01', selectedBusObj.estimated_time || 60, useDemoSimulation);
   };
 
   const handleStopTrip = () => {
@@ -60,7 +81,7 @@ export default function DriverDashboard() {
                 Operator Console — {user?.name || 'Authorized Operator'}
               </h1>
               <p className="text-xs font-bold opacity-90 mt-1">
-                Operator ID: {user?.driver_id || 'DRV-01'} | Assigned Vehicle: {assignedBus.bus_number}
+                Operator ID: {user?.driver_id || 'DRV-01'} | College: {user?.college_id || 'Campus Network'}
               </p>
             </div>
           </div>
@@ -81,7 +102,7 @@ export default function DriverDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
           <div className="md:col-span-2 bg-slate-900/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-800 shadow-xl space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div>
                 <h2 className="font-extrabold text-lg text-white">Route Telemetry Controls</h2>
                 <p className="text-xs text-slate-400">High-frequency GPS broadcast to passenger network</p>
@@ -95,10 +116,31 @@ export default function DriverDashboard() {
                     onChange={(e) => setUseDemoSimulation(e.target.checked)}
                     className="w-4 h-4 text-amber-500 rounded focus:ring-amber-400"
                   />
-                  <span>Simulate Waypoint Route GPS</span>
+                  <span>Simulate Route GPS</span>
                 </label>
               )}
             </div>
+
+            {/* Select Vehicle to Dispatch */}
+            {!activeTrip && collegeBuses.length > 0 && (
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                <label className="block text-xs font-bold text-slate-300 flex items-center gap-2">
+                  <Bus className="w-4 h-4 text-amber-400" />
+                  Select Vehicle to Dispatch:
+                </label>
+                <select
+                  value={selectedBusId}
+                  onChange={(e) => setSelectedBusId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-slate-900 border border-amber-500/40 text-xs font-bold text-amber-300 focus:ring-2 focus:ring-amber-500"
+                >
+                  {collegeBuses.map((b) => (
+                    <option key={b.id} value={b.id} className="bg-slate-900 text-white">
+                      🚌 {b.bus_number} — {b.route_name || b.bus_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {activeTrip ? (
               <div className="bg-slate-950 rounded-2xl p-6 text-white space-y-6 shadow-inner border border-slate-800 relative overflow-hidden">
@@ -119,7 +161,7 @@ export default function DriverDashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Vehicle Identification</span>
-                    <div className="font-extrabold text-amber-400 text-sm">{assignedBus.bus_number}</div>
+                    <div className="font-extrabold text-amber-400 text-sm">{selectedBusObj.bus_number}</div>
                   </div>
                   <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Velocity</span>
@@ -140,7 +182,7 @@ export default function DriverDashboard() {
                     <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
                     <span>Telemetry Feed: {isSimulating ? 'WAYPOINT GPS ROUTE' : 'DEVICE NATIVE GPS'}</span>
                   </div>
-                  <span>Automatic Journey Timer Enabled ({assignedBus.estimated_time || 60} mins)</span>
+                  <span>Automatic Journey Timer Enabled ({selectedBusObj.estimated_time || 60} mins)</span>
                 </div>
               </div>
             ) : (
@@ -191,18 +233,18 @@ export default function DriverDashboard() {
             <div className="space-y-3 text-xs text-slate-300">
               <div>
                 <span className="text-slate-500 font-medium">Route:</span>
-                <strong className="block text-white font-bold">{assignedBus.route_name}</strong>
+                <strong className="block text-white font-bold">{selectedBusObj.route_name}</strong>
               </div>
 
               <div>
                 <span className="text-slate-500 font-medium">Scheduled Duration:</span>
-                <strong className="block text-white font-bold">{assignedBus.estimated_time || 60} Minutes</strong>
+                <strong className="block text-white font-bold">{selectedBusObj.estimated_time || 60} Minutes</strong>
               </div>
 
               <div className="pt-2">
                 <span className="font-bold text-slate-200 block mb-2">Configured Stops:</span>
                 <div className="space-y-2 border-l-2 border-amber-400 ml-2 pl-3">
-                  {assignedBus.stops?.map((st, i) => (
+                  {selectedBusObj.stops?.map((st, i) => (
                     <div key={i} className="relative">
                       <div className="absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full bg-amber-400 border border-slate-950" />
                       <div className="font-bold text-slate-200">{i + 1}. {st.stop_name}</div>

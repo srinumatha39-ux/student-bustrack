@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { broadcastLocation, emitTripStart, emitTripStop } from '../services/socket';
+import { api } from '../services/api';
 
 const LocationContext = createContext(null);
 
@@ -46,6 +47,13 @@ export const LocationProvider = ({ children }) => {
       start_time: new Date()
     });
 
+    // Update bus status in API database to LIVE
+    try {
+      await api.put(`/api/buses/${busId}`, { status: 'LIVE' });
+    } catch (e) {
+      console.warn('Could not update bus status via API:', e);
+    }
+
     emitTripStart(busId, driverId, initialLoc);
 
     // Trip Timer Countdown
@@ -64,11 +72,10 @@ export const LocationProvider = ({ children }) => {
       setIsSimulating(true);
       waypointIndexRef.current = 0;
       
-      // Simulate moving along the route every 3 seconds
+      // Simulate moving along the route every 3.5 seconds
       simulationIntervalRef.current = setInterval(() => {
         waypointIndexRef.current = (waypointIndexRef.current + 1) % DEMO_ROUTE_WAYPOINTS.length;
         const currentPt = DEMO_ROUTE_WAYPOINTS[waypointIndexRef.current];
-        // Add tiny random jitter to simulate smooth driving
         const latJitter = (Math.random() - 0.5) * 0.0004;
         const lngJitter = (Math.random() - 0.5) * 0.0004;
         const newLat = currentPt.latitude + latJitter;
@@ -92,7 +99,7 @@ export const LocationProvider = ({ children }) => {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude, speed } = pos.coords;
-          const currentSpeed = speed ? Math.round(speed * 3.6) : 40; // m/s to km/h fallback
+          const currentSpeed = speed ? Math.round(speed * 3.6) : 40;
           const updated = { latitude, longitude, speed: currentSpeed, isDemo: false };
           setCurrentLocation(updated);
           broadcastLocation(busId, latitude, longitude, currentSpeed, false);
@@ -111,7 +118,7 @@ export const LocationProvider = ({ children }) => {
     }
   };
 
-  const stopTrip = (reason = null) => {
+  const stopTrip = async (reason = null) => {
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -126,6 +133,11 @@ export const LocationProvider = ({ children }) => {
     }
 
     if (activeTrip) {
+      try {
+        await api.put(`/api/buses/${activeTrip.bus_id}`, { status: 'INACTIVE' });
+      } catch (e) {
+        console.warn('Could not update bus status via API:', e);
+      }
       emitTripStop(activeTrip.bus_id);
     }
 

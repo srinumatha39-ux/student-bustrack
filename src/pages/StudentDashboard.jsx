@@ -5,7 +5,7 @@ import { api } from '../services/api';
 import BusCard from '../components/BusCard';
 import MapView from '../components/MapView';
 import CartoonBus from '../components/CartoonBus';
-import { Search, MapPin, Building2, Lock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Search, MapPin, Building2, Lock, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -25,11 +25,26 @@ export default function StudentDashboard() {
     loadBuses();
   }, [selectedCollege]);
 
+  // Realtime Event Listeners for Trip Dispatch Changes
+  useEffect(() => {
+    const handleStatusChange = () => {
+      loadBuses();
+    };
+
+    window.addEventListener('bus_status_change', handleStatusChange);
+    window.addEventListener('bus_location_update', handleStatusChange);
+
+    return () => {
+      window.removeEventListener('bus_status_change', handleStatusChange);
+      window.removeEventListener('bus_location_update', handleStatusChange);
+    };
+  }, []);
+
   const loadBuses = async () => {
     const data = await api.get('/api/buses');
     if (Array.isArray(data)) {
       setBuses(data);
-      if (data.length > 0) {
+      if (data.length > 0 && !selectedMapBus) {
         setSelectedMapBus(data[0]);
       }
     }
@@ -57,9 +72,9 @@ export default function StudentDashboard() {
   // Multi-College Filter Logic
   const filteredBuses = buses.filter((bus) => {
     const matchesSearch =
-      bus.bus_number.toLowerCase().includes(search.toLowerCase()) ||
-      bus.route_name.toLowerCase().includes(search.toLowerCase()) ||
-      bus.start_point.toLowerCase().includes(search.toLowerCase());
+      bus.bus_number?.toLowerCase().includes(search.toLowerCase()) ||
+      bus.route_name?.toLowerCase().includes(search.toLowerCase()) ||
+      bus.start_point?.toLowerCase().includes(search.toLowerCase());
 
     const matchesCollege =
       selectedCollege === 'ALL' ||
@@ -82,6 +97,8 @@ export default function StudentDashboard() {
     ]
   };
 
+  const liveBusesCount = filteredBuses.filter(b => b.status === 'LIVE' || b.status === 'ACTIVE').length;
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-950 p-4 sm:p-8 text-white relative z-10">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -102,8 +119,13 @@ export default function StudentDashboard() {
             </p>
           </div>
 
-          <div className="relative z-10">
-            <CartoonBus size="xl" isDriving={true} />
+          <div className="relative z-10 flex flex-col items-center gap-2">
+            <CartoonBus size="xl" isDriving={liveBusesCount > 0} />
+            {liveBusesCount > 0 && (
+              <span className="px-3 py-1 rounded-full bg-emerald-500 text-slate-950 text-xs font-black tracking-wide shadow-lg animate-pulse">
+                🟢 {liveBusesCount} BUS DISPATCH LIVE
+              </span>
+            )}
           </div>
         </div>
 
@@ -126,24 +148,30 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* Quick Bus Switch Pills */}
-            {isUnlocked && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
-                {filteredBuses.map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => setSelectedMapBus(b)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                      activeMapBus.id === b.id
-                        ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    🚌 {b.bus_number}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Refresh Button & Quick Bus Switch Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+              <button
+                onClick={loadBuses}
+                className="p-2 rounded-xl bg-slate-800 text-amber-400 hover:bg-slate-700 transition-colors shrink-0"
+                title="Refresh Live Feeds"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+
+              {isUnlocked && filteredBuses.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedMapBus(b)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    activeMapBus.id === b.id
+                      ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  🚌 {b.bus_number} {b.status === 'LIVE' || b.status === 'ACTIVE' ? '🟢 LIVE' : ''}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Embedded Map Component OR Security Code Unlock Card */}
@@ -259,7 +287,7 @@ export default function StudentDashboard() {
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
-              LIVE TRIPS ({filteredBuses.filter(b => b.status === 'LIVE' || b.status === 'ACTIVE').length})
+              LIVE TRIPS ({liveBusesCount})
             </button>
           </div>
 
