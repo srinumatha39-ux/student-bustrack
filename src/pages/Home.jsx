@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCollege } from '../context/CollegeContext';
 import Bus3DCanvas from '../components/Bus3DCanvas';
 import TowHitchAnimation from '../components/TowHitchAnimation';
 import Card3DTilt from '../components/Card3DTilt';
@@ -7,11 +8,12 @@ import Bus3DRealGraphic from '../components/Bus3DRealGraphic';
 import AdminFormCard from '../components/AdminFormCard';
 import DriverFormCard from '../components/DriverFormCard';
 import StudentFormCard from '../components/StudentFormCard';
-import { Shield, Bus, MapPin, ArrowRight, Sparkles, ShieldCheck, Activity, Award } from 'lucide-react';
+import { Shield, Bus, MapPin, ArrowRight, ShieldCheck, Activity, Award, Building2, Check, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function Home() {
   const navigate = useNavigate();
+  const { collegesList, selectedCollege, setSelectedCollege, currentCollegeObj } = useCollege();
   const [selectedPortal, setSelectedPortal] = useState(null); // 'admin' | 'driver' | 'student' | null
 
   const handleAdminClick = () => {
@@ -53,7 +55,7 @@ export default function Home() {
           {selectedPortal === 'student' && <StudentFormCard onBack={handleBackToPortals} />}
         </TowHitchAnimation>
       ) : (
-        /* PROFESSIONAL LANDING PAGE */
+        /* DYNAMIC ADMIN-CREATED COLLEGES LANDING PAGE */
         <div className="max-w-7xl mx-auto w-full relative z-10 my-auto py-8 space-y-12">
           
           {/* Hero Section */}
@@ -66,7 +68,7 @@ export default function Home() {
                 className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800/90 text-amber-300 text-xs font-bold border border-amber-400/30 backdrop-blur-md shadow-lg"
               >
                 <Award className="w-4 h-4 text-amber-400" />
-                <span>Smart College Bus Tracking System</span>
+                <span>Multi-College Protected Transportation System</span>
               </motion.div>
 
               <motion.h1
@@ -75,9 +77,9 @@ export default function Home() {
                 transition={{ delay: 0.1 }}
                 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight"
               >
-                Real-Time College <br />
+                Smart College <br />
                 <span className="bg-gradient-to-r from-amber-400 via-emerald-400 to-sky-400 bg-clip-text text-transparent">
-                  Bus 3D Telemetry
+                  Bus 3D Protected System
                 </span>
               </motion.h1>
 
@@ -87,18 +89,56 @@ export default function Home() {
                 transition={{ delay: 0.2 }}
                 className="text-slate-300 text-base sm:text-lg font-medium max-w-xl mx-auto lg:mx-0 leading-relaxed"
               >
-                Track college buses in real time with continuous GPS updates, instant breakdown alerts, and predictive ETA arrival schedules.
+                Only colleges created directly by Admins are shown. Students require the College Security Code created by the Admin to view bus locations.
               </motion.p>
+
+              {/* Dynamic Admin-Created Colleges Dropdown Box */}
+              <div className="bg-slate-900/90 backdrop-blur-xl p-4 rounded-2xl border border-slate-800 shadow-xl space-y-2 max-w-xl mx-auto lg:mx-0 text-left">
+                <label className="text-xs font-extrabold text-amber-300 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-amber-400" />
+                    ADMIN-REGISTERED COLLEGES
+                  </span>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
+                    {collegesList.length} Active Colleges
+                  </span>
+                </label>
+
+                <select
+                  value={selectedCollege}
+                  onChange={(e) => setSelectedCollege(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 text-xs font-bold text-white border border-slate-700 focus:ring-2 focus:ring-amber-500"
+                >
+                  {collegesList.length === 0 ? (
+                    <option value="NONE" className="bg-slate-900 text-slate-400 font-medium">
+                      No Registered Colleges Yet — Click Admin Login to Register College
+                    </option>
+                  ) : (
+                    collegesList.map((col) => (
+                      <option key={col.id} value={col.college_id} className="bg-slate-900 text-white font-medium">
+                        {col.name} ({col.college_id})
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 font-medium">
+                  <span>Selected: <strong className="text-white">{currentCollegeObj.name || 'None Selected'}</strong></span>
+                  <span className="text-amber-400 font-bold flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-amber-400" /> Security Code Protected
+                  </span>
+                </div>
+              </div>
 
               {/* Enterprise Trust Indicators */}
               <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs text-slate-400 font-semibold">
                 <div className="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>ISO Certified Access</span>
+                  <span>Admin Security Code Verification</span>
                 </div>
                 <div className="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800">
                   <Activity className="w-4 h-4 text-amber-400" />
-                  <span>Real-Time GPS Broadcast</span>
+                  <span>GPS Location Access Control</span>
                 </div>
               </div>
             </div>
@@ -115,19 +155,19 @@ export default function Home() {
               <div className="absolute bottom-4 left-4 right-4 bg-slate-950/85 backdrop-blur-md p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-xs text-slate-300 pointer-events-none">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                  <span className="font-bold text-white">Live 3D College Bus Scene</span>
+                  <span className="font-bold text-white">Live 3D Shuttle Renderer</span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium">Interactive 3D perspective enabled</span>
+                <span className="text-[11px] text-amber-300 font-bold">{currentCollegeObj.name || 'Admin-Registered System'}</span>
               </div>
             </motion.div>
 
           </div>
 
-          {/* Three Portals */}
+          {/* Three Access Portals */}
           <div className="space-y-4">
             <div className="text-center space-y-1">
-              <h2 className="text-2xl font-black text-white">Select Access Portal to Launch Console</h2>
-              <p className="text-xs text-slate-400 font-medium">Clicking any portal pulls the login form tied behind the bus into center</p>
+              <h2 className="text-2xl font-black text-white">Select Access Portal</h2>
+              <p className="text-xs text-slate-400 font-medium">Admins register new colleges directly. Students use Admin security codes to view bus locations.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-5xl mx-auto">
@@ -140,22 +180,22 @@ export default function Home() {
                       <Bus3DRealGraphic isMoving={true} wheelsSpinning={true} />
                     </div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-500/20 px-2.5 py-0.5 rounded-full border border-indigo-500/30 w-max mb-2">
-                      Admin Access
+                      Admin Registration
                     </div>
-                    <h3 className="text-xl font-extrabold text-white mb-2">ADMIN LOGIN</h3>
+                    <h3 className="text-xl font-extrabold text-white mb-2">ADMIN LOGIN / SIGN UP</h3>
                     <p className="text-slate-400 text-xs font-medium leading-relaxed">
-                      Manage campus fleet, configure route stops, generate driver secret keys, and monitor active trips.
+                      Register your College directly, define your College Security Code, and manage fleet buses.
                     </p>
                   </div>
 
                   <div className="mt-8 pt-4 border-t border-slate-800 flex items-center justify-between text-indigo-400 font-bold text-xs">
-                    <span>Launch Admin Console</span>
+                    <span>Register College or Sign In</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
               </Card3DTilt>
 
-              {/* 2. DRIVER PORTAL / DRIVER LOGIN */}
+              {/* 2. DRIVER PORTAL */}
               <Card3DTilt depth={30} onClick={handleDriverClick} className="cursor-pointer">
                 <div className="bg-gradient-to-b from-slate-900/90 to-slate-950/90 backdrop-blur-xl rounded-3xl p-8 border border-amber-500/30 shadow-xl hover:border-amber-400 hover:shadow-amber-500/20 transition-all flex flex-col justify-between h-full group border-t-4 border-t-amber-500">
                   <div>
@@ -163,11 +203,11 @@ export default function Home() {
                       <Bus3DRealGraphic isMoving={true} wheelsSpinning={true} />
                     </div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30 w-max mb-2">
-                      Driver Console
+                      Driver Access
                     </div>
                     <h3 className="text-xl font-extrabold text-white mb-2">DRIVER PORTAL</h3>
                     <p className="text-slate-400 text-xs font-medium leading-relaxed">
-                      Start route dispatches, stream continuous GPS location, monitor timers, and submit breakdown alerts.
+                      Select your Admin-created college, enter Admin secret key, and start live route tracking.
                     </p>
                   </div>
 
@@ -186,16 +226,16 @@ export default function Home() {
                       <Bus3DRealGraphic isMoving={true} wheelsSpinning={true} />
                     </div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-sky-400 bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-500/30 w-max mb-2">
-                      Student Access
+                      Protected Student Access
                     </div>
                     <h3 className="text-xl font-extrabold text-white mb-2">STUDENT LOGIN</h3>
                     <p className="text-slate-400 text-xs font-medium leading-relaxed">
-                      Track assigned bus markers on live Google Maps / 3D Vector Maps with real-time ETA predictions.
+                      Enter College Security Code created by Admin to unlock bus location markers on Mapbox 3D vector map.
                     </p>
                   </div>
 
                   <div className="mt-8 pt-4 border-t border-slate-800 flex items-center justify-between text-sky-400 font-bold text-xs">
-                    <span>Launch Student Portal</span>
+                    <span>Unlock & Launch Student Portal</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
@@ -208,7 +248,7 @@ export default function Home() {
 
       {/* Footer */}
       <div className="relative z-10 text-center text-xs text-slate-500 font-medium py-4 border-t border-slate-900">
-        Smart College Bus Tracking System &copy; {new Date().getFullYear()}
+        Smart College Bus Tracking System &copy; {new Date().getFullYear()} — Admin-Created Multi-College Infrastructure
       </div>
 
     </div>

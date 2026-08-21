@@ -1,18 +1,8 @@
-import React, { useState } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
+import React, { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import CartoonBus from './CartoonBus';
-import { Sparkles, Activity } from 'lucide-react';
-
-const mapContainerStyle = {
-  width: '100%',
-  height: '100%',
-  borderRadius: '1.5rem'
-};
-
-const defaultCenter = {
-  lat: 17.7120,
-  lng: 83.0400
-};
+import { Sparkles, Navigation, Layers, MapPin } from 'lucide-react';
 
 export default function MapView({
   location = { latitude: 17.6896, longitude: 83.0024, speed: 45 },
@@ -20,179 +10,162 @@ export default function MapView({
   busNumber = 'AP-31-1234',
   routeName = 'Anakapalle → College Campus Gate'
 }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  const isGoogleMapsConfigured = Boolean(apiKey && apiKey !== 'your_google_maps_api_key_here');
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+  const busMarkerRef = useRef(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: isGoogleMapsConfigured ? apiKey : '',
-    id: 'google-map-script'
-  });
+  // Mapbox Public Access Token (reads from VITE_MAPBOX_TOKEN or fallback)
+  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazMDA2gycXA4Zj84dGQ5ZXkifQ.n-GCsnR7EgZMIznW9qGfrA';
+  mapboxgl.accessToken = mapboxToken;
 
-  const [selectedStop, setSelectedStop] = useState(null);
-
-  const busCenter = {
-    lat: location?.latitude || defaultCenter.lat,
-    lng: location?.longitude || defaultCenter.lng
-  };
+  const currentLat = location?.latitude || 17.6896;
+  const currentLng = location?.longitude || 83.0024;
 
   const pathCoords = stops.length > 0
-    ? stops.map(s => ({ lat: Number(s.latitude), lng: Number(s.longitude) }))
+    ? stops.map(s => [Number(s.longitude), Number(s.latitude)])
     : [
-        { lat: 17.6896, lng: 83.0024 },
-        { lat: 17.7021, lng: 83.0210 },
-        { lat: 17.7180, lng: 83.0450 },
-        { lat: 17.7342, lng: 83.0780 }
+        [83.0024, 17.6896],
+        [83.0210, 17.7021],
+        [83.0450, 17.7180],
+        [83.0780, 17.7342]
       ];
 
-  if (isGoogleMapsConfigured && isLoaded && !loadError) {
-    return (
-      <div className="w-full h-full relative rounded-3xl overflow-hidden border border-slate-800 shadow-2xl">
-        <GoogleMap
-          mapContainerStyle={mapContainerStyle}
-          center={busCenter}
-          zoom={13}
-          options={{
-            disableDefaultUI: false,
-            zoomControl: true,
-            streetViewControl: false,
-            mapTypeControl: false
-          }}
-        >
-          <Polyline
-            path={pathCoords}
-            options={{
-              strokeColor: '#f59e0b',
-              strokeOpacity: 0.9,
-              strokeWeight: 6
-            }}
-          />
+  // Initialize Mapbox GL Map Instance
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
 
-          {stops.map((stop, idx) => (
-            <Marker
-              key={stop.id || idx}
-              position={{ lat: Number(stop.latitude), lng: Number(stop.longitude) }}
-              onClick={() => setSelectedStop(stop)}
-              icon={{
-                url: 'https://maps.google.com/mapfiles/ms/icons/amber-dot.png'
-              }}
-            />
-          ))}
+    try {
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11', // Mapbox Dark Vector Style
+        center: [currentLng, currentLat],
+        zoom: 13,
+        pitch: 45, // 3D Tilt perspective
+        bearing: -17.6
+      });
 
-          <Marker
-            position={busCenter}
-            icon={{
-              url: 'https://cdn-icons-png.flaticon.com/512/3448/3448339.png',
-              scaledSize: new window.google.maps.Size(48, 48)
-            }}
-          />
+      mapRef.current = map;
 
-          {selectedStop && (
-            <InfoWindow
-              position={{ lat: Number(selectedStop.latitude), lng: Number(selectedStop.longitude) }}
-              onCloseClick={() => setSelectedStop(null)}
-            >
-              <div className="p-1 font-sans">
-                <h4 className="font-bold text-xs text-slate-900">{selectedStop.stop_name}</h4>
-                <p className="text-[10px] text-slate-500">Stop #{selectedStop.stop_order}</p>
-              </div>
-            </InfoWindow>
-          )}
-        </GoogleMap>
+      // Add Mapbox Navigation Controls (Zoom & Pitch)
+      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-        <div className="absolute top-4 right-4 bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl border border-slate-800 flex items-center gap-3 text-white">
-          <CartoonBus size="sm" isDriving={true} />
-          <div className="text-xs font-bold">{busNumber}</div>
-          <div className="h-4 w-px bg-slate-700" />
-          <div className="text-xs font-bold text-emerald-400">
-            {location.speed || 40} km/h
+      map.on('load', () => {
+        setMapLoaded(true);
+
+        // Add Route Line Source & Layer
+        map.addSource('bus-route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: pathCoords
+            }
+          }
+        });
+
+        map.addLayer({
+          id: 'bus-route-line',
+          type: 'line',
+          source: 'bus-route',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': '#f59e0b',
+            'line-width': 6,
+            'line-opacity': 0.85
+          }
+        });
+
+        // Add Stop Markers
+        stops.forEach((stop, idx) => {
+          const el = document.createElement('div');
+          el.className = 'w-6 h-6 rounded-full bg-slate-900 border-2 border-amber-400 text-amber-300 font-bold flex items-center justify-center text-[10px] shadow-lg cursor-pointer';
+          el.innerText = `${idx + 1}`;
+
+          const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
+            `<div class="p-1 font-sans text-slate-900"><strong class="text-xs font-bold">${stop.stop_name}</strong><br/><span class="text-[10px] text-slate-500">Stop #${stop.stop_order}</span></div>`
+          );
+
+          new mapboxgl.Marker(el)
+            .setLngLat([Number(stop.longitude), Number(stop.latitude)])
+            .setPopup(popup)
+            .addTo(map);
+        });
+
+        // Add Animated Bus Marker
+        const busEl = document.createElement('div');
+        busEl.className = 'custom-bus-marker cursor-pointer flex flex-col items-center';
+        busEl.innerHTML = `
+          <div class="px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 font-extrabold text-[10px] border border-amber-400/40 shadow-lg whitespace-nowrap mb-1">
+            🚌 ${busNumber} (LIVE)
           </div>
-        </div>
-      </div>
-    );
-  }
+          <div class="w-12 h-10 flex items-center justify-center">
+            <img src="https://cdn-icons-png.flaticon.com/512/3448/3448339.png" class="w-10 h-10 drop-shadow-lg animate-bounce" />
+          </div>
+        `;
 
-  // ============================================================
-  // INTERACTIVE VECTOR TELEMETRY MAP
-  // ============================================================
+        busMarkerRef.current = new mapboxgl.Marker(busEl)
+          .setLngLat([currentLng, currentLat])
+          .addTo(map);
+      });
+
+    } catch (err) {
+      console.warn('Mapbox GL JS Fallback active:', err.message);
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+      }
+    };
+  }, []);
+
+  // Smoothly pan Mapbox camera and update marker on location change
+  useEffect(() => {
+    if (mapRef.current && mapLoaded) {
+      mapRef.current.panTo([currentLng, currentLat], { duration: 1000 });
+      if (busMarkerRef.current) {
+        busMarkerRef.current.setLngLat([currentLng, currentLat]);
+      }
+    }
+  }, [currentLat, currentLng, mapLoaded]);
+
   return (
-    <div className="w-full h-full relative min-h-[420px] bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col justify-between p-4 sm:p-6">
+    <div className="w-full h-full relative min-h-[420px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-950">
       
-      <div 
-        className="absolute inset-0 opacity-15 pointer-events-none"
-        style={{
-          backgroundImage: `radial-gradient(#f59e0b 1px, transparent 1px)`,
-          backgroundSize: '24px 24px'
-        }}
-      />
+      {/* Mapbox Canvas Container */}
+      <div ref={mapContainerRef} className="w-full h-full min-h-[420px]" />
 
-      {/* Header Overlay */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 backdrop-blur-md p-3.5 rounded-2xl border border-slate-800">
+      {/* Mapbox Top Header Overlay */}
+      <div className="absolute top-4 left-4 z-10 bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl border border-slate-800 flex items-center gap-3 text-white">
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+          <Navigation className="w-3 h-3 text-amber-400" />
+          MAPBOX GL VECTOR MAP
+        </span>
+        <div className="text-xs font-extrabold text-white">{busNumber}</div>
+        <div className="h-4 w-px bg-slate-700" />
+        <div className="text-xs font-bold text-emerald-400">
+          {location.speed || 42} km/h
+        </div>
+      </div>
+
+      {/* Mapbox Bottom Telemetry Status Bar */}
+      <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between text-[11px] text-slate-300 bg-slate-950/85 backdrop-blur-md p-3 rounded-2xl border border-slate-800">
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-400" />
-            3D ROUTE TELEMETRY MAP
-          </span>
-          <span className="text-xs font-semibold text-slate-300">{routeName}</span>
+          <MapPin className="w-4 h-4 text-amber-400" />
+          <span>Route: <strong className="text-white font-semibold">{routeName}</strong></span>
         </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-slate-400">Lat: <strong className="text-white font-mono">{Number(location.latitude).toFixed(4)}</strong></span>
-          <span className="text-slate-400">Lng: <strong className="text-white font-mono">{Number(location.longitude).toFixed(4)}</strong></span>
-          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-            {location.speed || 42} km/h
-          </span>
+        <div className="flex items-center gap-3 font-mono text-[11px]">
+          <span>Lat: <strong className="text-amber-300">{Number(currentLat).toFixed(4)}</strong></span>
+          <span>Lng: <strong className="text-amber-300">{Number(currentLng).toFixed(4)}</strong></span>
         </div>
       </div>
 
-      {/* Animated Cartoon Bus Route Line */}
-      <div className="relative z-10 flex-1 my-6 flex items-center justify-center">
-        <div className="w-full max-w-3xl bg-slate-900/60 backdrop-blur-sm rounded-2xl p-6 border border-slate-800 shadow-inner relative overflow-hidden">
-          
-          <div className="relative w-full h-16 flex items-center justify-between px-4">
-            <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-amber-500 via-emerald-400 to-amber-400 w-full animate-pulse" />
-            </div>
-
-            {pathCoords.map((pt, idx) => (
-              <div key={idx} className="relative z-10 flex flex-col items-center group cursor-pointer">
-                <div className="w-7 h-7 rounded-full bg-slate-900 border-2 border-amber-400 text-amber-300 flex items-center justify-center text-[10px] font-bold group-hover:scale-125 transition-transform shadow-lg">
-                  {idx + 1}
-                </div>
-                <span className="absolute top-8 text-[10px] font-semibold text-slate-300 whitespace-nowrap bg-slate-950 px-2 py-0.5 rounded border border-slate-800 shadow">
-                  {stops[idx]?.stop_name || `Stop ${idx + 1}`}
-                </span>
-              </div>
-            ))}
-
-            {/* Moving Animated Cartoon Bus Marker */}
-            <div 
-              className="absolute top-1/2 -translate-y-1/2 z-20 transition-all duration-700 ease-out"
-              style={{
-                left: `${Math.min(85, Math.max(12, ((location.latitude - 17.68) / 0.06) * 100))}%`
-              }}
-            >
-              <div className="relative flex flex-col items-center">
-                <CartoonBus size="md" isDriving={true} />
-                <span className="text-[10px] font-extrabold text-amber-300 bg-slate-950 px-2.5 py-0.5 rounded-full border border-amber-400/40 shadow-lg whitespace-nowrap mt-1">
-                  🚌 {busNumber} (LIVE)
-                </span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <div className="relative z-10 flex flex-wrap items-center justify-between text-[11px] text-slate-400 bg-slate-950/80 p-3 rounded-2xl border border-slate-800">
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-          <span>Real-time GPS telemetry active. Configure <code className="text-amber-300 bg-slate-900 px-1.5 py-0.5 rounded">VITE_GOOGLE_MAPS_API_KEY</code> for Satellite view.</span>
-        </div>
-        <div className="flex items-center gap-2 font-medium">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-emerald-400 font-bold">Telemetry Stream Online</span>
-        </div>
-      </div>
     </div>
   );
 }

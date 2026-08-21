@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCollege } from '../context/CollegeContext';
 import Card3DTilt from './Card3DTilt';
 import { MapPin, ArrowLeft, KeyRound, ShieldCheck, AlertCircle, User, UserPlus, Hash, Building } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function StudentFormCard({ onBack }) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const { collegesList, selectedCollege, setSelectedCollege, unlockCollegeWithCode } = useCollege();
 
-  // Clean production form state
+  // Clean form state
   const [name, setName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
-  const [collegeId, setCollegeId] = useState('');
   const [password, setPassword] = useState('');
   const [secretKey, setSecretKey] = useState('');
 
@@ -20,8 +21,24 @@ export default function StudentFormCard({ onBack }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedCollege || selectedCollege === 'ALL' || selectedCollege === 'NONE') {
+      setError('Please select an Admin-registered College!');
+      return;
+    }
+    if (!secretKey) {
+      setError('You must enter the College Security Code created by the Admin!');
+      return;
+    }
+
+    // Verify security code with backend/college context
+    const codeRes = await unlockCollegeWithCode(selectedCollege, secretKey);
+    if (!codeRes.success) {
+      setError(codeRes.message || 'Incorrect Security Code for this College!');
+      return;
+    }
+
     if (isSignUp) {
-      const res = await registerStudent(rollNumber, collegeId, name, password, secretKey);
+      const res = await registerStudent(rollNumber, selectedCollege, name, password, secretKey);
       if (res.success) navigate('/student/dashboard');
     } else {
       const res = await loginStudent(rollNumber, password, secretKey);
@@ -52,7 +69,7 @@ export default function StudentFormCard({ onBack }) {
             Back to Portals
           </button>
           <span className="text-[10px] font-bold uppercase tracking-widest text-sky-400 bg-sky-500/20 px-2.5 py-1 rounded-full border border-sky-500/30">
-            {isSignUp ? 'New Passenger Sign Up' : 'Passenger Portal'}
+            {isSignUp ? 'New Passenger Sign Up' : 'Student Portal'}
           </span>
         </div>
 
@@ -61,10 +78,10 @@ export default function StudentFormCard({ onBack }) {
             {isSignUp ? <UserPlus className="w-6 h-6 sm:w-7 sm:h-7" /> : <MapPin className="w-6 h-6 sm:w-7 sm:h-7" />}
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-white">
-            {isSignUp ? 'Student Transit Enrollment' : 'Passenger Authentication'}
+            {isSignUp ? 'Student Transit Registration' : 'Student Authentication'}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {isSignUp ? 'Register student roll number & access code' : 'Access live campus shuttle tracking and predictive ETAs'}
+            {isSignUp ? 'Requires College Security Code created by Admin to access live bus locations' : 'Enter College Security Code to unlock bus tracking'}
           </p>
         </div>
 
@@ -76,6 +93,33 @@ export default function StudentFormCard({ onBack }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Dynamic Admin-Created Colleges Selector */}
+          <div>
+            <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Select Admin-Registered College <span className="text-rose-400">*</span></span>
+            </label>
+            <div className="relative">
+              <Building className="w-4 h-4 text-sky-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <select
+                value={selectedCollege}
+                onChange={(e) => setSelectedCollege(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/90 border border-sky-500/40 text-xs font-bold text-sky-300 focus:ring-2 focus:ring-sky-500"
+              >
+                {collegesList.length === 0 ? (
+                  <option value="NONE" className="bg-slate-900 text-slate-400">
+                    No Registered Colleges Yet (Create Admin Account)
+                  </option>
+                ) : (
+                  collegesList.map((col) => (
+                    <option key={col.id} value={col.college_id} className="bg-slate-900 text-white font-medium">
+                      {col.name} ({col.college_id})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+
           {isSignUp && (
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -114,23 +158,6 @@ export default function StudentFormCard({ onBack }) {
 
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
-              College ID <span className="text-rose-400">*</span>
-            </label>
-            <div className="relative">
-              <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                required
-                value={collegeId}
-                onChange={(e) => setCollegeId(e.target.value)}
-                placeholder="Enter College ID"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700 text-xs font-semibold text-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">
               {isSignUp ? 'Create Password' : 'Password'} <span className="text-rose-400">*</span>
             </label>
             <div className="relative">
@@ -148,8 +175,8 @@ export default function StudentFormCard({ onBack }) {
 
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
-              <span>Security Pass Code <span className="text-rose-400">*</span></span>
-              <span className="text-[10px] font-normal text-slate-400">Issued by Administration</span>
+              <span>College Security Code <span className="text-rose-400">*</span></span>
+              <span className="text-[10px] text-amber-300 font-semibold">Created by Admin</span>
             </label>
             <div className="relative">
               <ShieldCheck className="w-4 h-4 text-sky-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -158,7 +185,7 @@ export default function StudentFormCard({ onBack }) {
                 required
                 value={secretKey}
                 onChange={(e) => setSecretKey(e.target.value)}
-                placeholder="Enter security pass code"
+                placeholder="Enter Security Code created by Admin"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-xs font-semibold text-sky-300 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 font-mono"
               />
             </div>
@@ -167,10 +194,10 @@ export default function StudentFormCard({ onBack }) {
           <div className="pt-2 space-y-3">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || collegesList.length === 0}
               className="w-full py-3 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-500 shadow-lg shadow-sky-600/30 transition-all disabled:opacity-50"
             >
-              {loading ? 'Authenticating...' : isSignUp ? 'Enroll Passenger Account' : 'Sign In as Passenger'}
+              {loading ? 'Authenticating...' : isSignUp ? 'Register Student Account' : 'Unlock & Sign In as Student'}
             </button>
 
             <button
@@ -178,7 +205,7 @@ export default function StudentFormCard({ onBack }) {
               onClick={toggleMode}
               className="w-full block text-center py-2 rounded-xl text-xs font-bold text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors"
             >
-              {isSignUp ? 'Already registered? Sign In' : "New Passenger? Enroll Here"}
+              {isSignUp ? 'Already registered? Sign In' : "New Student? Enroll Here"}
             </button>
           </div>
         </form>

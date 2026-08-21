@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCollege } from '../context/CollegeContext';
 import Card3DTilt from './Card3DTilt';
 import { Shield, ArrowLeft, KeyRound, UserCheck, UserPlus, AlertCircle, User, Building, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function AdminFormCard({ onBack }) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const { fetchRegisteredColleges } = useCollege();
 
   // Form states initialized clean for production
   const [name, setName] = useState('');
@@ -26,8 +28,15 @@ export default function AdminFormCard({ onBack }) {
         setError('Create Password and Confirm Password do not match!');
         return;
       }
+      if (!collegeId || !collegeName || !securityCode) {
+        setError('College ID, College Name, and Create Security Code are required!');
+        return;
+      }
       const res = await registerAdmin(collegeId, password, name, collegeName, securityCode);
-      if (res.success) navigate('/admin/dashboard');
+      if (res.success) {
+        await fetchRegisteredColleges();
+        navigate('/admin/dashboard');
+      }
     } else {
       const res = await loginAdmin(collegeId, password);
       if (res.success) navigate('/admin/dashboard');
@@ -57,7 +66,7 @@ export default function AdminFormCard({ onBack }) {
             Back to Portals
           </button>
           <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30">
-            {isSignUp ? 'New Admin Sign Up' : 'Admin Portal'}
+            {isSignUp ? 'New College Admin Registration' : 'Admin Portal'}
           </span>
         </div>
 
@@ -66,10 +75,10 @@ export default function AdminFormCard({ onBack }) {
             {isSignUp ? <UserPlus className="w-6 h-6 sm:w-7 sm:h-7" /> : <Shield className="w-6 h-6 sm:w-7 sm:h-7" />}
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-white">
-            {isSignUp ? 'Create Admin Account' : 'Admin Authentication'}
+            {isSignUp ? 'Register New College Account' : 'Admin Authentication'}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {isSignUp ? 'Register new college administrator credentials' : 'Institutional administrator access only'}
+            {isSignUp ? 'Creating an account registers your College into the multi-college network' : 'Institutional administrator access only'}
           </p>
         </div>
 
@@ -85,7 +94,7 @@ export default function AdminFormCard({ onBack }) {
             <>
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  Full Name <span className="text-rose-400">*</span>
+                  Administrator Full Name <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -102,7 +111,7 @@ export default function AdminFormCard({ onBack }) {
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  College Name <span className="text-rose-400">*</span>
+                  College / University Name <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -130,7 +139,7 @@ export default function AdminFormCard({ onBack }) {
                 required
                 value={collegeId}
                 onChange={(e) => setCollegeId(e.target.value)}
-                placeholder="Enter Admin ID"
+                placeholder="Enter unique College ID (e.g. STMARYS, AITAM)"
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700 text-xs font-semibold text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -138,7 +147,7 @@ export default function AdminFormCard({ onBack }) {
 
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
-              {isSignUp ? 'Create Password' : 'Password'} <span className="text-rose-400">*</span>
+              {isSignUp ? 'Create Admin Password' : 'Password'} <span className="text-rose-400">*</span>
             </label>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -147,7 +156,7 @@ export default function AdminFormCard({ onBack }) {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={isSignUp ? 'Create a strong password' : 'Enter password'}
+                placeholder={isSignUp ? 'Create strong password' : 'Enter password'}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700 text-xs font-semibold text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -157,7 +166,7 @@ export default function AdminFormCard({ onBack }) {
             <>
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  Confirm Password <span className="text-rose-400">*</span>
+                  Confirm Admin Password <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -173,8 +182,9 @@ export default function AdminFormCard({ onBack }) {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  Create Security Code <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span>Create College Security Code <span className="text-rose-400">*</span></span>
+                  <span className="text-[10px] text-amber-300">Required for Students to view buses</span>
                 </label>
                 <div className="relative">
                   <Shield className="w-4 h-4 text-indigo-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -183,7 +193,7 @@ export default function AdminFormCard({ onBack }) {
                     required
                     value={securityCode}
                     onChange={(e) => setSecurityCode(e.target.value)}
-                    placeholder="Enter security authorization code"
+                    placeholder="e.g. SEC-12345"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs font-semibold text-indigo-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
                   />
                 </div>
@@ -197,7 +207,7 @@ export default function AdminFormCard({ onBack }) {
               disabled={loading}
               className="w-full py-3 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
             >
-              {loading ? 'Authenticating...' : isSignUp ? 'Create Admin Account' : 'Sign In as Administrator'}
+              {loading ? 'Authenticating...' : isSignUp ? 'Register College & Admin Account' : 'Sign In as Administrator'}
             </button>
 
             <button
@@ -205,7 +215,7 @@ export default function AdminFormCard({ onBack }) {
               onClick={toggleMode}
               className="w-full block text-center py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 transition-colors"
             >
-              {isSignUp ? 'Already have an Admin account? Sign In' : "New Admin? Provision Account Here"}
+              {isSignUp ? 'Already have a registered College? Sign In' : "New Admin? Register Your College Here"}
             </button>
           </div>
         </form>
