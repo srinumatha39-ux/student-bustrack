@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCollege } from '../context/CollegeContext';
@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 
 export default function DriverFormCard({ onBack }) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const { collegesList, selectedCollege, setSelectedCollege } = useCollege();
+  const { collegesList, selectedCollege, setSelectedCollege, fetchRegisteredColleges } = useCollege();
 
   // Clean form state
   const [driverId, setDriverId] = useState('');
@@ -18,6 +18,10 @@ export default function DriverFormCard({ onBack }) {
 
   const { loginDriver, registerDriver, loading, error, setError } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchRegisteredColleges();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

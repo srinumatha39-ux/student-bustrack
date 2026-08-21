@@ -30,11 +30,16 @@ export function CollegeProvider({ children }) {
     localStorage.setItem('unlocked_college_security_codes', JSON.stringify(unlockedSecurityCodes));
   }, [unlockedSecurityCodes]);
 
-  const fetchRegisteredColleges = async () => {
+  const fetchRegisteredColleges = async (newSelectedId = null) => {
     try {
       const data = await api.get('/api/colleges');
       if (Array.isArray(data)) {
         setCollegesList(data);
+        if (newSelectedId) {
+          setSelectedCollege(newSelectedId);
+        } else if (data.length > 0 && (selectedCollege === 'ALL' || selectedCollege === 'NONE' || !data.some(c => c.college_id === selectedCollege))) {
+          setSelectedCollege(data[0].college_id);
+        }
       }
     } catch (err) {
       console.warn('Could not fetch registered colleges:', err);
@@ -62,7 +67,7 @@ export function CollegeProvider({ children }) {
     return Boolean(unlockedSecurityCodes[college_id]);
   };
 
-  const currentCollegeObj = collegesList.find(c => c.college_id === selectedCollege) || {
+  const currentCollegeObj = collegesList.find(c => c.college_id === selectedCollege) || collegesList[0] || {
     id: 'NONE',
     college_id: 'NONE',
     name: 'No Registered Colleges Yet',

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import {
   Bus, Users, Shield, AlertTriangle, Activity, Plus, Trash2, CheckCircle,
-  RefreshCw, ShieldAlert, Sparkles, Building2, Gauge, Clock, Search, X, Lock
+  RefreshCw, ShieldAlert, Sparkles, Building2, Gauge, Clock, Search, X, Lock, KeyRound, UserCheck, ShieldCheck
 } from 'lucide-react';
 
 export default function AdminDashboard() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
 
   const [buses, setBuses] = useState([]);
@@ -30,6 +32,7 @@ export default function AdminDashboard() {
     max_speed: 60,
     driver_name: '',
     driver_id: '',
+    college_id: user?.college_id || '',
     stops_input: 'Anakapalle Ring Road, Main Road Junction, Railway Station Gate, College Campus Gate'
   });
 
@@ -39,13 +42,14 @@ export default function AdminDashboard() {
     name: '',
     password: '',
     secret_key: 'SEC-DRV-' + Math.floor(100 + Math.random() * 900),
+    college_id: user?.college_id || '',
     assigned_bus_id: ''
   });
 
   // New Student Form
   const [studentForm, setStudentForm] = useState({
     roll_number: '',
-    college_id: '',
+    college_id: user?.college_id || '',
     name: '',
     password: '',
     secret_key: 'SEC-STU-' + Math.floor(100 + Math.random() * 900)
@@ -54,6 +58,14 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadAllData();
   }, []);
+
+  useEffect(() => {
+    if (user?.college_id) {
+      setBusForm(prev => ({ ...prev, college_id: user.college_id }));
+      setDriverForm(prev => ({ ...prev, college_id: user.college_id }));
+      setStudentForm(prev => ({ ...prev, college_id: user.college_id }));
+    }
+  }, [user]);
 
   const loadAllData = async () => {
     const b = await api.get('/api/buses');
@@ -78,6 +90,7 @@ export default function AdminDashboard() {
 
     await api.post('/api/buses', {
       ...busForm,
+      college_id: user?.college_id || busForm.college_id,
       stops: stopsList
     });
     setIsAddBusOpen(false);
@@ -93,8 +106,19 @@ export default function AdminDashboard() {
 
   const handleAddDriver = async (e) => {
     e.preventDefault();
-    await api.post('/api/drivers', driverForm);
+    await api.post('/api/drivers', {
+      ...driverForm,
+      college_id: user?.college_id || driverForm.college_id
+    });
     setIsAddDriverOpen(false);
+    setDriverForm({
+      driver_id: '',
+      name: '',
+      password: '',
+      secret_key: 'SEC-DRV-' + Math.floor(100 + Math.random() * 900),
+      college_id: user?.college_id || '',
+      assigned_bus_id: ''
+    });
     loadAllData();
   };
 
@@ -112,8 +136,18 @@ export default function AdminDashboard() {
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    await api.post('/api/students', studentForm);
+    await api.post('/api/students', {
+      ...studentForm,
+      college_id: user?.college_id || studentForm.college_id
+    });
     setIsAddStudentOpen(false);
+    setStudentForm({
+      roll_number: '',
+      college_id: user?.college_id || '',
+      name: '',
+      password: '',
+      secret_key: 'SEC-STU-' + Math.floor(100 + Math.random() * 900)
+    });
     loadAllData();
   };
 
@@ -146,9 +180,9 @@ export default function AdminDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">
-                System Operations Command
+                {user?.college_name || 'Admin Operations Console'}
               </span>
-              <span className="text-xs text-slate-400 font-medium">• Live Telemetry Monitor</span>
+              <span className="text-xs text-slate-400 font-medium">• College ID: <strong className="text-amber-400 font-mono">{user?.college_id}</strong></span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">
               Fleet Administration & Operations Console
@@ -253,7 +287,7 @@ export default function AdminDashboard() {
 
             </div>
 
-            {/* Fleet Status Table (Trip controls removed — Trip start/stop owned exclusively by Drivers) */}
+            {/* Fleet Status Table */}
             <div className="bg-slate-900/90 rounded-3xl p-6 border border-slate-800 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-800 pb-3">
                 <h3 className="font-extrabold text-lg text-white">Transit Fleet Telemetry Status</h3>
@@ -563,7 +597,7 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* MODALS WITH PROFESSIONAL STYLING */}
+      {/* MODAL 1: ADD BUS */}
       {isAddBusOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
           <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-800 text-white">
@@ -602,7 +636,92 @@ export default function AdminDashboard() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setIsAddBusOpen(false)} className="px-4 py-2 rounded-xl font-bold text-slate-400">Cancel</button>
-                <button type="submit" className="px-5 py-2 rounded-xl font-bold text-slate-950 bg-amber-400">Save Vehicle</button>
+                <button type="submit" className="px-5 py-2 rounded-xl font-bold text-slate-950 bg-amber-400 hover:bg-amber-300">Save Vehicle</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: ADD DRIVER / ENROLL OPERATOR */}
+      {isAddDriverOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-amber-500/40 text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-extrabold text-base text-white">Enroll New Driver / Transit Operator</h3>
+              <button onClick={() => setIsAddDriverOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleAddDriver} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-300">Driver Full Name</label>
+                <input required value={driverForm.name} onChange={e => setDriverForm({...driverForm, name: e.target.value})} placeholder="e.g. Ramesh Kumar" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-300">Driver / Operator ID</label>
+                  <input required value={driverForm.driver_id} onChange={e => setDriverForm({...driverForm, driver_id: e.target.value})} placeholder="DRV-01" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-300">Driver Password</label>
+                  <input required type="password" value={driverForm.password} onChange={e => setDriverForm({...driverForm, password: e.target.value})} placeholder="Enter Password" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+                </div>
+              </div>
+              <div>
+                <label className="font-bold text-slate-300">Admin Secret Authorization Key</label>
+                <input required value={driverForm.secret_key} onChange={e => setDriverForm({...driverForm, secret_key: e.target.value})} placeholder="SEC-DRV-101" className="w-full p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 font-mono text-amber-300 font-bold" />
+              </div>
+              <div>
+                <label className="font-bold text-slate-300">Assign Fleet Vehicle</label>
+                <select value={driverForm.assigned_bus_id} onChange={e => setDriverForm({...driverForm, assigned_bus_id: e.target.value})} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white">
+                  <option value="">-- Select Bus Vehicle --</option>
+                  {buses.map(b => (
+                    <option key={b.id} value={b.id}>{b.bus_number} ({b.route_name})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsAddDriverOpen(false)} className="px-4 py-2 rounded-xl font-bold text-slate-400">Cancel</button>
+                <button type="submit" className="px-5 py-2 rounded-xl font-bold text-slate-950 bg-amber-400 hover:bg-amber-300">Enroll Driver</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: ADD STUDENT ACCOUNT */}
+      {isAddStudentOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-indigo-500/40 text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-extrabold text-base text-white">Register New Student Account</h3>
+              <button onClick={() => setIsAddStudentOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <form onSubmit={handleAddStudent} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-300">Student Full Name</label>
+                <input required value={studentForm.name} onChange={e => setStudentForm({...studentForm, name: e.target.value})} placeholder="e.g. Ananya Sharma" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-300">Roll Number / Student ID</label>
+                  <input required value={studentForm.roll_number} onChange={e => setStudentForm({...studentForm, roll_number: e.target.value})} placeholder="21001A0501" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-300">Student Password</label>
+                  <input required type="password" value={studentForm.password} onChange={e => setStudentForm({...studentForm, password: e.target.value})} placeholder="Enter Password" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+                </div>
+              </div>
+              <div>
+                <label className="font-bold text-slate-300">College ID</label>
+                <input required value={studentForm.college_id} onChange={e => setStudentForm({...studentForm, college_id: e.target.value})} placeholder="STMARYS" className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+              </div>
+              <div>
+                <label className="font-bold text-slate-300">College Security Pass Code</label>
+                <input required value={studentForm.secret_key} onChange={e => setStudentForm({...studentForm, secret_key: e.target.value})} placeholder="SEC-STU-101" className="w-full p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 font-mono text-indigo-300 font-bold" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsAddStudentOpen(false)} className="px-4 py-2 rounded-xl font-bold text-slate-400">Cancel</button>
+                <button type="submit" className="px-5 py-2 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-500">Register Student</button>
               </div>
             </form>
           </div>

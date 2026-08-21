@@ -10,7 +10,7 @@ export default function AdminFormCard({ onBack }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const { fetchRegisteredColleges } = useCollege();
 
-  // Form states initialized clean for production
+  // Form states
   const [name, setName] = useState('');
   const [collegeName, setCollegeName] = useState('');
   const [collegeId, setCollegeId] = useState('');
@@ -34,7 +34,7 @@ export default function AdminFormCard({ onBack }) {
       }
       const res = await registerAdmin(collegeId, password, name, collegeName, securityCode);
       if (res.success) {
-        await fetchRegisteredColleges();
+        await fetchRegisteredColleges(collegeId);
         navigate('/admin/dashboard');
       }
     } else {

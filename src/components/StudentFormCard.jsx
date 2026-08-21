@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCollege } from '../context/CollegeContext';
@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 
 export default function StudentFormCard({ onBack }) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const { collegesList, selectedCollege, setSelectedCollege, unlockCollegeWithCode } = useCollege();
+  const { collegesList, selectedCollege, setSelectedCollege, unlockCollegeWithCode, fetchRegisteredColleges } = useCollege();
 
   // Clean form state
   const [name, setName] = useState('');
@@ -18,6 +18,10 @@ export default function StudentFormCard({ onBack }) {
 
   const { loginStudent, registerStudent, loading, error, setError } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchRegisteredColleges();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
