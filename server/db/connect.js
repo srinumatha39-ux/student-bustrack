@@ -3,35 +3,43 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let cachedConn = null;
+let isConnecting = false;
 
 export const connectDB = async () => {
-  if (mongoose.connection.readyState === 1) {
+  // If already connected, return true immediately
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
     return true;
   }
 
-  const uri = process.env.MONGODB_URI;
+  let uri = process.env.MONGODB_URI;
 
   if (!uri || uri === 'your-connection-string-here' || (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://'))) {
-    console.warn('⚠️ MONGODB_URI is using placeholder or is unconfigured in .env / Vercel settings');
     return false;
   }
 
+  // Auto-clean URI (remove angle brackets `<>` and encode unescaped `#` if present)
+  uri = uri.replace('<', '').replace('>', '');
+  if (uri.includes('#') && !uri.includes('%23')) {
+    uri = uri.replace('#', '%23');
+  }
+
   try {
-    if (!cachedConn) {
-      cachedConn = await mongoose.connect(uri, {
-        bufferCommands: false,
-        serverSelectionTimeoutMS: 5000
+    if (!isConnecting) {
+      isConnecting = true;
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000
       });
+      isConnecting = false;
     }
-    console.log(`✅ MongoDB connected: ${mongoose.connection.host}`);
-    return true;
+    return mongoose.connection.readyState === 1;
   } catch (error) {
+    isConnecting = false;
     console.error(`⚠️ MongoDB connection error: ${error.message}`);
     return false;
   }
 };
 
 export const isMongoReady = () => {
-  return mongoose.connection && mongoose.connection.readyState === 1;
+  return Boolean(mongoose.connection && mongoose.connection.readyState === 1);
 };
