@@ -1,6 +1,20 @@
-// Unified API & Data Access Service with Permanent LocalStorage Persistence
+// Unified API & Data Access Service with Dynamic Cross-Device Host Resolution & MongoDB Atlas Persistence
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const getApiBase = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // Dynamic local network IP fallback so mobile phones & other devices on LAN can connect!
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return `http://${hostname}:5000`;
+    }
+  }
+  return 'http://localhost:5000';
+};
+
+const API_BASE = getApiBase();
 
 function getLocalData(key) {
   const stored = localStorage.getItem(`bus_app_${key}`);
@@ -27,7 +41,7 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     if (body) options.body = JSON.stringify(body);
 
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 2000);
+    const id = setTimeout(() => controller.abort(), 4000);
 
     const res = await fetch(`${API_BASE}${endpoint}`, { ...options, signal: controller.signal });
     clearTimeout(id);
@@ -37,6 +51,7 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     }
     throw new Error('API server response not ok');
   } catch (err) {
+    console.warn(`[API] Cross-device connection to ${API_BASE}${endpoint} failed. Using fallback storage.`);
     return fallbackLocalHandler(endpoint, method, body);
   }
 }
