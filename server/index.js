@@ -723,6 +723,10 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 Multi-College Server running with Password Reset on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`🚀 Multi-College Server running with Password Reset on port ${PORT}`);
+  });
+}
+
+export default app;
