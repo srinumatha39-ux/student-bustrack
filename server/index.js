@@ -5,7 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 
-import { connectDB } from './db/connect.js';
+import { connectDB, isMongoReady } from './db/connect.js';
 import Admin from './models/Admin.js';
 import Driver from './models/Driver.js';
 import Student from './models/Student.js';
@@ -27,10 +27,12 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB Atlas on Startup
-let isMongoConnected = false;
-connectDB().then(connected => {
-  isMongoConnected = Boolean(connected);
+// Serverless / API DB Middleware: Attempt MongoDB Atlas connection on each API request
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    await connectDB();
+  }
+  next();
 });
 
 // Dynamic Admin-Created Colleges & In-Memory Store
@@ -46,7 +48,7 @@ let memoryDb = {
 
 // Helper: Fetch all Admin-Created Colleges
 const getRegisteredColleges = async () => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const admins = await Admin.find({}, 'college_id college_name security_code name createdAt').lean();
     return admins.map(a => ({
       id: a.college_id,
@@ -64,11 +66,14 @@ const getRegisteredColleges = async () => {
 // ==========================================
 
 // Health Check Endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const connected = await connectDB();
+  const mongoStatus = isMongoReady() || connected;
   res.json({
     status: 'OK',
     message: 'Smart Multi-College Bus Tracking Backend Operational',
-    database: isMongoConnected ? 'MongoDB Atlas Connected' : 'Dynamic In-Memory Store'
+    database: mongoStatus ? 'MongoDB Atlas Connected' : 'Dynamic In-Memory Store',
+    mongo_ready: mongoStatus
   });
 });
 
@@ -87,7 +92,7 @@ app.post('/api/colleges/verify-code', async (req, res) => {
   try {
     const { college_id, security_code } = req.body;
     
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id });
       if (!admin) {
         return res.status(404).json({ success: false, message: 'College not found.' });
@@ -122,7 +127,7 @@ app.post('/api/auth/admin/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'College ID, College Name, Security Code, and Password are required.' });
     }
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const existing = await Admin.findOne({ college_id });
       if (existing) return res.status(400).json({ success: false, message: 'College ID / Admin Account already registered.' });
 
@@ -159,7 +164,7 @@ app.post('/api/auth/admin/login', async (req, res) => {
   try {
     const { college_id, password } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id });
       if (admin && (await bcrypt.compare(password, admin.password_hash))) {
         return res.json({ success: true, user: { role: 'admin', id: admin._id, college_id: admin.college_id, college_name: admin.college_name, name: admin.name } });
@@ -187,7 +192,7 @@ app.post('/api/auth/admin/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'College ID, Security Code, and New Password are required.' });
     }
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id, security_code });
       if (!admin) {
         return res.status(401).json({ success: false, message: 'Invalid College ID or Security Code verification failed.' });
@@ -216,7 +221,7 @@ app.post('/api/auth/driver/register', async (req, res) => {
   try {
     const { driver_id, name, password, secret_key, college_id } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id });
       if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
       if (admin.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect Admin Secret Key for this College.' });
@@ -249,7 +254,7 @@ app.post('/api/auth/driver/login', async (req, res) => {
   try {
     const { driver_id, password, secret_key } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const driver = await Driver.findOne({ driver_id, secret_key });
       if (driver && (await bcrypt.compare(password, driver.password_hash))) {
         const assignedBus = await Bus.findOne({ bus_id: driver.assigned_bus_id });
@@ -291,7 +296,7 @@ app.post('/api/auth/driver/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Driver ID, Secret Key, and New Password are required.' });
     }
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const driver = await Driver.findOne({ driver_id, secret_key });
       if (!driver) {
         return res.status(401).json({ success: false, message: 'Invalid Driver ID or Secret Key verification failed.' });
@@ -313,7 +318,7 @@ app.post('/api/auth/driver/reset-password', async (req, res) => {
 });
 
 app.get('/api/drivers', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const drivers = await Driver.find().lean();
     return res.json(drivers.map(d => ({ id: d._id, ...d })));
   }
@@ -325,7 +330,7 @@ app.post('/api/drivers', async (req, res) => {
     const { driver_id, name, password, secret_key, assigned_bus_id, college_id } = req.body;
     const password_hash = await bcrypt.hash(password || 'driver123', 10);
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const driver = await Driver.create({ driver_id, name, password_hash, secret_key, college_id, assigned_bus_id: assigned_bus_id || 'b1' });
       return res.json({ success: true, driver });
     }
@@ -339,7 +344,7 @@ app.post('/api/drivers', async (req, res) => {
 });
 
 app.delete('/api/drivers/:id', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     await Driver.findByIdAndDelete(req.params.id);
     return res.json({ success: true });
   }
@@ -354,7 +359,7 @@ app.post('/api/auth/student/register', async (req, res) => {
   try {
     const { roll_number, college_id, name, password, secret_key } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id });
       if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
       if (admin.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect College Security Code.' });
@@ -387,7 +392,7 @@ app.post('/api/auth/student/login', async (req, res) => {
   try {
     const { roll_number, password, secret_key } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const student = await Student.findOne({ roll_no: roll_number, secret_key });
       if (student && (await bcrypt.compare(password, student.password_hash))) {
         return res.json({
@@ -418,7 +423,7 @@ app.post('/api/auth/student/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Roll Number, College Security Code, and New Password are required.' });
     }
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const student = await Student.findOne({ roll_no: roll_number, secret_key });
       if (!student) {
         return res.status(401).json({ success: false, message: 'Invalid Roll Number or College Security Code verification failed.' });
@@ -440,7 +445,7 @@ app.post('/api/auth/student/reset-password', async (req, res) => {
 });
 
 app.get('/api/students', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const students = await Student.find().lean();
     return res.json(students.map(s => ({ id: s._id, roll_number: s.roll_no, ...s })));
   }
@@ -452,7 +457,7 @@ app.post('/api/students', async (req, res) => {
     const { roll_number, college_id, name, password, secret_key } = req.body;
     const password_hash = await bcrypt.hash(password || 'student123', 10);
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const student = await Student.create({ roll_no: roll_number, college_id, name, password_hash, secret_key });
       return res.json({ success: true, student });
     }
@@ -466,7 +471,7 @@ app.post('/api/students', async (req, res) => {
 });
 
 app.delete('/api/students/:id', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     await Student.findByIdAndDelete(req.params.id);
     return res.json({ success: true });
   }
@@ -480,7 +485,7 @@ app.delete('/api/students/:id', async (req, res) => {
 app.get('/api/buses', async (req, res) => {
   const { college_id } = req.query;
 
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const query = college_id ? { college_id } : {};
     const buses = await Bus.find(query).lean();
     return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
@@ -497,7 +502,7 @@ app.post('/api/buses', async (req, res) => {
     const bus_id = 'b_' + Date.now();
     const { bus_number, bus_name, route_name, start_point, destination, estimated_time, stops, college_id } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const newBus = await Bus.create({
         bus_id,
         college_id: college_id || 'DEFAULT',
@@ -522,7 +527,7 @@ app.post('/api/buses', async (req, res) => {
 
 app.put('/api/buses/:id', async (req, res) => {
   try {
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const bus = await Bus.findByIdAndUpdate(req.params.id, req.body, { new: true });
       io.emit('buses-updated', await Bus.find().lean());
       return res.json({ success: true, bus });
@@ -542,7 +547,7 @@ app.put('/api/buses/:id', async (req, res) => {
 });
 
 app.delete('/api/buses/:id', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     await Bus.findByIdAndDelete(req.params.id);
     io.emit('buses-updated', await Bus.find().lean());
     return res.json({ success: true });
@@ -557,7 +562,7 @@ app.delete('/api/buses/:id', async (req, res) => {
 // ISSUE REPORTS (WITH 24H TTL INDEX)
 // ------------------------------------------
 app.get('/api/reports', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const reports = await IssueReport.find().sort({ createdAt: -1 }).lean();
     return res.json(reports.map(r => ({ id: r._id, description: r.message, ...r })));
   }
@@ -569,7 +574,7 @@ app.post('/api/reports', async (req, res) => {
     const report_id = 'r_' + Date.now();
     const { bus_id, bus_number, driver_id, driver_name, issue_type, description, latitude, longitude } = req.body;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       const report = await IssueReport.create({
         report_id,
         bus_id: bus_id || bus_number || 'b1',
@@ -605,7 +610,7 @@ app.post('/api/reports', async (req, res) => {
 });
 
 app.put('/api/reports/:id/resolve', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     const report = await IssueReport.findByIdAndUpdate(req.params.id, { status: 'RESOLVED' }, { new: true });
     io.emit('reports-updated', await IssueReport.find().lean());
     return res.json({ success: true, report });
@@ -622,7 +627,7 @@ app.put('/api/reports/:id/resolve', async (req, res) => {
 });
 
 app.delete('/api/reports/:id', async (req, res) => {
-  if (isMongoConnected) {
+  if (isMongoReady()) {
     await IssueReport.findByIdAndDelete(req.params.id);
     io.emit('reports-updated', await IssueReport.find().lean());
     return res.json({ success: true });
@@ -646,7 +651,7 @@ io.on('connection', (socket) => {
     const { bus_id, driver_id, initial_location } = data;
     const trip_id = 'trip_' + Date.now();
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       try {
         await TripSession.create({
           trip_id,
@@ -677,7 +682,7 @@ io.on('connection', (socket) => {
   socket.on('location-update', async (data) => {
     const { bus_id, latitude, longitude, speed, isDemo } = data;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       try {
         await TripSession.findOneAndUpdate(
           { bus_id, end_time: null },
@@ -704,7 +709,7 @@ io.on('connection', (socket) => {
   socket.on('stop-trip', async (data) => {
     const { bus_id } = data;
 
-    if (isMongoConnected) {
+    if (isMongoReady()) {
       try {
         await TripSession.findOneAndUpdate({ bus_id, end_time: null }, { end_time: new Date() });
         await Bus.findOneAndUpdate({ bus_id }, { is_active: false });
