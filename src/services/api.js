@@ -58,7 +58,6 @@ function fallbackLocalHandler(endpoint, method, body) {
     const admins = getLocalData('admins');
     const colleges = getLocalData('colleges');
 
-    // Combine any admin created colleges
     const adminColleges = admins
       .filter(a => a.college_id && a.college_name)
       .map(a => ({
@@ -90,6 +89,42 @@ function fallbackLocalHandler(endpoint, method, body) {
       return { success: true, message: 'Security Code Verified!' };
     }
     return { success: false, message: 'Incorrect Security Code for this College.' };
+  }
+
+  // ADMIN RESET PASSWORD
+  if (endpoint === '/api/auth/admin/reset-password') {
+    const admins = getLocalData('admins');
+    const admin = admins.find(a => a.college_id === body.college_id && a.security_code === body.security_code);
+    if (admin) {
+      admin.password = body.new_password;
+      setLocalData('admins', admins);
+      return { success: true, message: 'Admin password reset successfully! You can now sign in.' };
+    }
+    return { success: false, message: 'Invalid College ID or Security Code verification failed.' };
+  }
+
+  // DRIVER RESET PASSWORD
+  if (endpoint === '/api/auth/driver/reset-password') {
+    const drivers = getLocalData('drivers');
+    const driver = drivers.find(d => d.driver_id === body.driver_id && d.secret_key === body.secret_key);
+    if (driver) {
+      driver.password = body.new_password;
+      setLocalData('drivers', drivers);
+      return { success: true, message: 'Driver password reset successfully! You can now sign in.' };
+    }
+    return { success: false, message: 'Invalid Driver ID or Admin Secret Key verification failed.' };
+  }
+
+  // STUDENT RESET PASSWORD
+  if (endpoint === '/api/auth/student/reset-password') {
+    const students = getLocalData('students');
+    const student = students.find(s => (s.roll_number === body.roll_number || s.college_id === body.roll_number) && s.secret_key === body.secret_key);
+    if (student) {
+      student.password = body.new_password;
+      setLocalData('students', students);
+      return { success: true, message: 'Student password reset successfully! You can now sign in.' };
+    }
+    return { success: false, message: 'Invalid Roll Number or College Security Code verification failed.' };
   }
 
   // ADMIN AUTH & SIGN UP

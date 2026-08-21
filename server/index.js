@@ -35,7 +35,7 @@ connectDB().then(connected => {
 
 // Dynamic Admin-Created Colleges & In-Memory Store
 let memoryDb = {
-  colleges: [], // Dynamically populated ONLY when Admins register accounts
+  colleges: [],
   admins: [],
   drivers: [],
   students: [],
@@ -82,7 +82,7 @@ app.get('/api/colleges', async (req, res) => {
   }
 });
 
-// VERIFY COLLEGE SECURITY CODE FOR PASSENGERS/STUDENTS
+// VERIFY COLLEGE SECURITY CODE
 app.post('/api/colleges/verify-code', async (req, res) => {
   try {
     const { college_id, security_code } = req.body;
@@ -112,7 +112,7 @@ app.post('/api/colleges/verify-code', async (req, res) => {
 });
 
 // ------------------------------------------
-// ADMIN AUTHENTICATION & COLLEGE REGISTRATION
+// ADMIN AUTHENTICATION & FORGOT PASSWORD
 // ------------------------------------------
 app.post('/api/auth/admin/register', async (req, res) => {
   try {
@@ -133,7 +133,6 @@ app.post('/api/auth/admin/register', async (req, res) => {
       return res.json({ success: true, user: { role: 'admin', id: admin._id, college_id: admin.college_id, college_name: admin.college_name, name: admin.name } });
     }
 
-    // In-memory fallback
     const existing = memoryDb.admins.find(a => a.college_id === college_id);
     if (existing) return res.status(400).json({ success: false, message: 'College ID / Admin Account already registered.' });
 
@@ -141,7 +140,6 @@ app.post('/api/auth/admin/register', async (req, res) => {
     const newAdmin = { id: 'adm_' + Date.now(), college_id, password_hash, name, college_name, security_code };
     memoryDb.admins.push(newAdmin);
 
-    // Register new College dynamically
     memoryDb.colleges.push({
       id: college_id,
       college_id,
@@ -151,7 +149,7 @@ app.post('/api/auth/admin/register', async (req, res) => {
     });
 
     io.emit('colleges-updated', memoryDb.colleges);
-    res.json({ success: true, user: { role: 'admin', id: newAdmin.id, college_id: newAdmin.college_id, college_name: newAdmin.college_name, name: newAdmin.name } });
+    res.json({ success: true, user: { role: 'admin', id: newAdmin.id, college_id: newAdmin.college_id, name: newAdmin.college_name, name: newAdmin.name } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -172,27 +170,55 @@ app.post('/api/auth/admin/login', async (req, res) => {
     let admin = memoryDb.admins.find(a => a.college_id === college_id);
     if (admin) {
       const isMatch = await bcrypt.compare(password, admin.password_hash);
-      if (isMatch) return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, college_name: admin.college_name, name: admin.name } });
+      if (isMatch) return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, name: admin.college_name, name: admin.name } });
     }
 
-    res.status(401).json({ success: false, message: 'Invalid Admin ID or Password. If you are a new Admin, click "Register / Sign Up" to register your College.' });
+    res.status(401).json({ success: false, message: 'Invalid Admin ID or Password.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ADMIN RESET FORGOT PASSWORD
+app.post('/api/auth/admin/reset-password', async (req, res) => {
+  try {
+    const { college_id, security_code, new_password } = req.body;
+    if (!college_id || !security_code || !new_password) {
+      return res.status(400).json({ success: false, message: 'College ID, Security Code, and New Password are required.' });
+    }
+
+    if (isMongoConnected) {
+      const admin = await Admin.findOne({ college_id, security_code });
+      if (!admin) {
+        return res.status(401).json({ success: false, message: 'Invalid College ID or Security Code verification failed.' });
+      }
+      const new_hash = await bcrypt.hash(new_password, 10);
+      admin.password_hash = new_hash;
+      await admin.save();
+      return res.json({ success: true, message: 'Admin password reset successfully! You can now sign in with your new password.' });
+    }
+
+    let admin = memoryDb.admins.find(a => a.college_id === college_id && a.security_code === security_code);
+    if (admin) {
+      admin.password_hash = await bcrypt.hash(new_password, 10);
+      return res.json({ success: true, message: 'Admin password reset successfully!' });
+    }
+    res.status(401).json({ success: false, message: 'Invalid College ID or Security Code verification failed.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // ------------------------------------------
-// DRIVER AUTHENTICATION & MANAGEMENT
+// DRIVER AUTHENTICATION & FORGOT PASSWORD
 // ------------------------------------------
 app.post('/api/auth/driver/register', async (req, res) => {
   try {
     const { driver_id, name, password, secret_key, college_id } = req.body;
 
-    // Verify College exists & security key
-    let targetCollege;
     if (isMongoConnected) {
       const admin = await Admin.findOne({ college_id });
-      if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet. Please ask your Admin to register.' });
+      if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
       if (admin.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect Admin Secret Key for this College.' });
       
       const existing = await Driver.findOne({ driver_id });
@@ -206,8 +232,8 @@ app.post('/api/auth/driver/register', async (req, res) => {
       });
     }
 
-    targetCollege = memoryDb.colleges.find(c => c.college_id === college_id);
-    if (!targetCollege) return res.status(404).json({ success: false, message: 'Selected College is not registered yet. Please ask your Admin to register.' });
+    const targetCollege = memoryDb.colleges.find(c => c.college_id === college_id);
+    if (!targetCollege) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
     if (targetCollege.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect Admin Secret Key for this College.' });
 
     const password_hash = await bcrypt.hash(password, 10);
@@ -257,6 +283,35 @@ app.post('/api/auth/driver/login', async (req, res) => {
   }
 });
 
+// DRIVER RESET FORGOT PASSWORD
+app.post('/api/auth/driver/reset-password', async (req, res) => {
+  try {
+    const { driver_id, secret_key, new_password } = req.body;
+    if (!driver_id || !secret_key || !new_password) {
+      return res.status(400).json({ success: false, message: 'Driver ID, Secret Key, and New Password are required.' });
+    }
+
+    if (isMongoConnected) {
+      const driver = await Driver.findOne({ driver_id, secret_key });
+      if (!driver) {
+        return res.status(401).json({ success: false, message: 'Invalid Driver ID or Secret Key verification failed.' });
+      }
+      driver.password_hash = await bcrypt.hash(new_password, 10);
+      await driver.save();
+      return res.json({ success: true, message: 'Driver password reset successfully! You can now sign in.' });
+    }
+
+    let driver = memoryDb.drivers.find(d => d.driver_id === driver_id && d.secret_key === secret_key);
+    if (driver) {
+      driver.password_hash = await bcrypt.hash(new_password, 10);
+      return res.json({ success: true, message: 'Driver password reset successfully!' });
+    }
+    res.status(401).json({ success: false, message: 'Invalid Driver ID or Secret Key verification failed.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.get('/api/drivers', async (req, res) => {
   if (isMongoConnected) {
     const drivers = await Driver.find().lean();
@@ -293,16 +348,15 @@ app.delete('/api/drivers/:id', async (req, res) => {
 });
 
 // ------------------------------------------
-// STUDENT AUTHENTICATION & MANAGEMENT
+// STUDENT AUTHENTICATION & FORGOT PASSWORD
 // ------------------------------------------
 app.post('/api/auth/student/register', async (req, res) => {
   try {
     const { roll_number, college_id, name, password, secret_key } = req.body;
 
-    // Verify College exists and check security_code
     if (isMongoConnected) {
       const admin = await Admin.findOne({ college_id });
-      if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet. Ask Admin to register first.' });
+      if (!admin) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
       if (admin.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect College Security Code.' });
 
       const existing = await Student.findOne({ roll_no: roll_number });
@@ -317,7 +371,7 @@ app.post('/api/auth/student/register', async (req, res) => {
     }
 
     const college = memoryDb.colleges.find(c => c.college_id === college_id);
-    if (!college) return res.status(404).json({ success: false, message: 'Selected College is not registered yet. Ask Admin to register first.' });
+    if (!college) return res.status(404).json({ success: false, message: 'Selected College is not registered yet.' });
     if (college.security_code !== secret_key) return res.status(401).json({ success: false, message: 'Incorrect College Security Code.' });
 
     const password_hash = await bcrypt.hash(password, 10);
@@ -351,6 +405,35 @@ app.post('/api/auth/student/login', async (req, res) => {
     }
 
     res.status(401).json({ success: false, message: 'Invalid Roll Number, Password, or College Security Code.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// STUDENT RESET FORGOT PASSWORD
+app.post('/api/auth/student/reset-password', async (req, res) => {
+  try {
+    const { roll_number, secret_key, new_password } = req.body;
+    if (!roll_number || !secret_key || !new_password) {
+      return res.status(400).json({ success: false, message: 'Roll Number, College Security Code, and New Password are required.' });
+    }
+
+    if (isMongoConnected) {
+      const student = await Student.findOne({ roll_no: roll_number, secret_key });
+      if (!student) {
+        return res.status(401).json({ success: false, message: 'Invalid Roll Number or College Security Code verification failed.' });
+      }
+      student.password_hash = await bcrypt.hash(new_password, 10);
+      await student.save();
+      return res.json({ success: true, message: 'Student password reset successfully! You can now sign in.' });
+    }
+
+    let student = memoryDb.students.find(s => s.roll_number === roll_number && s.secret_key === secret_key);
+    if (student) {
+      student.password_hash = await bcrypt.hash(new_password, 10);
+      return res.json({ success: true, message: 'Student password reset successfully!' });
+    }
+    res.status(401).json({ success: false, message: 'Invalid Roll Number or College Security Code verification failed.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -641,5 +724,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 Multi-College Dynamic Admin Server running on port ${PORT}`);
+  console.log(`🚀 Multi-College Server running with Password Reset on port ${PORT}`);
 });
