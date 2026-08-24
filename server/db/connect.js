@@ -13,12 +13,20 @@ export const connectDB = async () => {
 
   let uri = process.env.MONGODB_URI;
 
-  if (!uri || uri === 'your-connection-string-here' || (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://'))) {
+  if (!uri) {
+    console.warn('⚠️ MONGODB_URI is undefined or unconfigured in environment settings.');
     return false;
   }
 
-  // Auto-clean URI (remove angle brackets `<>` and encode unescaped `#` if present)
-  uri = uri.replace('<', '').replace('>', '');
+  // Strip quotes, brackets, and whitespace if present in environment variable
+  uri = uri.trim().replace(/^["']|["']$/g, '').replace('<', '').replace('>', '');
+
+  if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
+    console.warn(`⚠️ MONGODB_URI format invalid: "${uri.substring(0, 15)}..."`);
+    return false;
+  }
+
+  // Auto URL-encode '#' if present in password
   if (uri.includes('#') && !uri.includes('%23')) {
     uri = uri.replace('#', '%23');
   }
