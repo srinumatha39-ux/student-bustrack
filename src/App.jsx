@@ -6,6 +6,7 @@ import { CollegeProvider } from './context/CollegeContext';
 
 import Navbar from './components/Navbar';
 import Page3DBackground from './components/Page3DBackground';
+import InstallPwaButton from './components/InstallPwaButton';
 import Home from './pages/Home';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
@@ -50,6 +51,9 @@ export default function App() {
             <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
               {/* Ambient 3D Particle & Grid Background */}
               <Page3DBackground />
+
+              {/* Floating Corner PWA Install Button */}
+              <InstallPwaButton />
 
               {/* Application Content */}
               <Navbar />
