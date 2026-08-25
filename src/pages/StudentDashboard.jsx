@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useCollege } from '../context/CollegeContext';
 import { api } from '../services/api';
+import { subscribeToLocation } from '../services/socket';
 import BusCard from '../components/BusCard';
 import MapView from '../components/MapView';
 import CartoonBus from '../components/CartoonBus';
@@ -15,30 +16,53 @@ export default function StudentDashboard() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [selectedMapBus, setSelectedMapBus] = useState(null);
+  const [liveBusLocation, setLiveBusLocation] = useState(null);
 
   // Security Code unlock modal states
   const [securityInput, setSecurityInput] = useState('');
   const [unlockError, setUnlockError] = useState(null);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
+  // Auto-load & 5-Second Realtime Polling
   useEffect(() => {
     loadBuses();
+    const interval = setInterval(loadBuses, 5000);
+    return () => clearInterval(interval);
   }, [selectedCollege]);
 
-  // Realtime Event Listeners for Trip Dispatch Changes
+  // Realtime Event Listeners for Trip Dispatch & Status Changes
   useEffect(() => {
     const handleStatusChange = () => {
       loadBuses();
     };
 
     window.addEventListener('bus_status_change', handleStatusChange);
-    window.addEventListener('bus_location_update', handleStatusChange);
+    window.addEventListener('buses-updated', handleStatusChange);
 
     return () => {
       window.removeEventListener('bus_status_change', handleStatusChange);
-      window.removeEventListener('bus_location_update', handleStatusChange);
+      window.removeEventListener('buses-updated', handleStatusChange);
     };
   }, []);
+
+  // Subscribe to live GPS updates for selected map bus
+  useEffect(() => {
+    const busId = selectedMapBus?.bus_id || selectedMapBus?.id;
+    if (!busId) return;
+
+    const unsubscribe = subscribeToLocation(busId, (locationData) => {
+      setLiveBusLocation({
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        speed: locationData.speed || 40,
+        isDemo: locationData.isDemo
+      });
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [selectedMapBus]);
 
   const loadBuses = async () => {
     const data = await api.get('/api/buses');
@@ -97,6 +121,12 @@ export default function StudentDashboard() {
     ]
   };
 
+  const mapLocation = liveBusLocation || {
+    latitude: activeMapBus.stops?.[0]?.latitude || 17.6896,
+    longitude: activeMapBus.stops?.[0]?.longitude || 83.0024,
+    speed: 40
+  };
+
   const liveBusesCount = filteredBuses.filter(b => b.status === 'LIVE' || b.status === 'ACTIVE').length;
 
   return (
@@ -137,10 +167,10 @@ export default function StudentDashboard() {
                 <MapPin className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="font-extrabold text-lg text-white">Direct Mapbox 3D Tracking</h2>
+                <h2 className="font-extrabold text-lg text-white">Live Real-Time MapLibre Vector Map</h2>
                 <p className="text-xs text-slate-400">
                   {isUnlocked ? (
-                    <>Active bus marker: <strong className="text-amber-400">{activeMapBus.bus_number}</strong> ({activeMapBus.route_name})</>
+                    <>Active bus tracking: <strong className="text-amber-400">{activeMapBus.bus_number}</strong> ({activeMapBus.route_name})</>
                   ) : (
                     <span className="text-rose-400 font-bold flex items-center gap-1"><Lock className="w-3.5 h-3.5 inline" /> Security Code Protected</span>
                   )}
@@ -161,7 +191,10 @@ export default function StudentDashboard() {
               {isUnlocked && filteredBuses.map((b) => (
                 <button
                   key={b.id}
-                  onClick={() => setSelectedMapBus(b)}
+                  onClick={() => {
+                    setSelectedMapBus(b);
+                    setLiveBusLocation(null);
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                     activeMapBus.id === b.id
                       ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
@@ -178,11 +211,7 @@ export default function StudentDashboard() {
           {isUnlocked ? (
             <div className="h-[360px] sm:h-[440px] w-full rounded-2xl overflow-hidden border border-slate-800">
               <MapView
-                location={{
-                  latitude: activeMapBus.stops?.[0]?.latitude || 17.6896,
-                  longitude: activeMapBus.stops?.[0]?.longitude || 83.0024,
-                  speed: 42
-                }}
+                location={mapLocation}
                 stops={activeMapBus.stops || []}
                 busNumber={activeMapBus.bus_number}
                 routeName={activeMapBus.route_name}
