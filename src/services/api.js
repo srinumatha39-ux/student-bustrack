@@ -1,11 +1,14 @@
-// Unified API & Data Access Service with Dynamic Cross-Device Host Resolution & MongoDB Atlas Persistence
+// Unified API & Data Access Service with Dynamic Cross-Device Host Resolution & HTTPS Mixed-Content Prevention
 
 const getApiBase = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // Dynamic local network IP fallback so mobile phones & other devices on LAN can connect!
-  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+  if (typeof window !== 'undefined' && window.location) {
+    // Prevent HTTPS Mixed Content Blocking on Vercel production!
+    if (window.location.protocol === 'https:') {
+      return window.location.origin;
+    }
     const hostname = window.location.hostname;
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       return `http://${hostname}:5000`;
@@ -51,7 +54,7 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     }
     throw new Error('API server response not ok');
   } catch (err) {
-    console.warn(`[API] Cross-device connection to ${API_BASE}${endpoint} failed. Using fallback storage.`);
+    console.warn(`[API] Connection to ${API_BASE}${endpoint} failed. Using fallback local storage.`);
     return fallbackLocalHandler(endpoint, method, body);
   }
 }

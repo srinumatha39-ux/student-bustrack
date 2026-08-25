@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { motion } from 'framer-motion';
-import { Sparkles, Navigation, MapPin } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 export default function Bus3DAnimation({ type, onComplete }) {
   const mountRef = useRef(null);
@@ -17,7 +17,7 @@ export default function Bus3DAnimation({ type, onComplete }) {
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
 
     // Studio Lighting
@@ -82,7 +82,7 @@ export default function Bus3DAnimation({ type, onComplete }) {
     grill.position.set(2.38, 0.95, 0);
     busGroup.add(grill);
 
-    // Glass Windows (Sky Blue Transmission)
+    // Glass Windows
     const winMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 });
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 1.7), winMat);
     windshield.position.set(2.21, 1.65, 0);
@@ -127,7 +127,7 @@ export default function Bus3DAnimation({ type, onComplete }) {
     scene.add(spotlightL);
     scene.add(spotlightL.target);
 
-    // Cartoon Wheels (Rubber Tires + Chrome Hubcaps)
+    // Cartoon Wheels
     const tireMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.9 });
     const hubMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.9 });
     const wheels = [];
@@ -174,7 +174,6 @@ export default function Bus3DAnimation({ type, onComplete }) {
     let animationFrameId;
 
     if (type === 'driver') {
-      // Driver Animation: 3D Cartoon Bus drives from left (-25) to center (0)
       busGroup.position.set(-25, 0, 0);
       camera.position.set(0, 7, 16);
       camera.lookAt(0, 1.2, 0);
@@ -183,7 +182,6 @@ export default function Bus3DAnimation({ type, onComplete }) {
         const elapsed = (now - startTime) / 1000;
         animationFrameId = requestAnimationFrame(animateDriver);
 
-        // Move bus forward
         if (busGroup.position.x < 0) {
           busGroup.position.x += (0 - busGroup.position.x) * 0.08;
           wheels.forEach((w) => (w.children[0].rotation.y -= 0.2));
@@ -191,10 +189,8 @@ export default function Bus3DAnimation({ type, onComplete }) {
           busGroup.position.x = 0;
         }
 
-        // Suspension bounce
         busGroup.position.y = Math.sin(elapsed * 12) * 0.04;
 
-        // Camera smooth zoom into bus window
         if (elapsed > 0.8) {
           camera.position.z += (11 - camera.position.z) * 0.05;
           camera.position.y += (4 - camera.position.y) * 0.05;
@@ -210,7 +206,6 @@ export default function Bus3DAnimation({ type, onComplete }) {
       animateDriver(performance.now());
 
     } else if (type === 'student') {
-      // Student Animation: 3D GPS Pin drops, 3D Cartoon Bus moves to pin
       const pinGroup = new THREE.Group();
       const pinHead = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), new THREE.MeshStandardMaterial({ color: 0xf43f5e, metalness: 0.4 }));
       const pinCone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.4, 16), new THREE.MeshStandardMaterial({ color: 0xf43f5e, metalness: 0.4 }));
@@ -229,19 +224,16 @@ export default function Bus3DAnimation({ type, onComplete }) {
         const elapsed = (now - startTime) / 1000;
         animationFrameId = requestAnimationFrame(animateStudent);
 
-        // Pin drops down
         if (pinGroup.position.y > 2) {
           pinGroup.position.y -= (pinGroup.position.y - 2) * 0.1;
         }
         pinGroup.rotation.y += 0.03;
 
-        // Bus moves to pin
         if (busGroup.position.x < 5) {
           busGroup.position.x += (5 - busGroup.position.x) * 0.06;
           wheels.forEach((w) => (w.children[0].rotation.y -= 0.2));
         }
 
-        // Suspension bounce
         busGroup.position.y = Math.sin(elapsed * 12) * 0.04;
 
         renderer.render(scene, camera);
@@ -264,7 +256,6 @@ export default function Bus3DAnimation({ type, onComplete }) {
 
   return (
     <div className="relative w-full max-w-2xl mx-auto py-4">
-      {/* 3D WebGL Scene Container */}
       <div ref={mountRef} className="w-full h-64 rounded-3xl overflow-hidden shadow-2xl border border-slate-700 bg-slate-950" />
 
       <motion.div

@@ -18,10 +18,10 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
 
-    // 2. Realistic Studio Lighting
+    // 2. Studio Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
     scene.add(ambientLight);
 
@@ -32,7 +32,6 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     sunLight.shadow.mapSize.height = 2048;
     scene.add(sunLight);
 
-    // Soft Rim Light
     const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.5);
     rimLight.position.set(-15, 10, -15);
     scene.add(rimLight);
@@ -43,7 +42,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     // Main Bus Chassis (Yellow)
     const bodyGeometry = new THREE.BoxGeometry(4.2, 2.0, 1.8);
     const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf59e0b, // College Bus Yellow
+      color: 0xf59e0b,
       roughness: 0.15,
       metalness: 0.2
     });
@@ -63,14 +62,14 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     stripeRight.position.set(0, 1.0, -0.91);
     busGroup.add(stripeRight);
 
-    // Curved Front Hood Nose
+    // Hood Nose
     const hoodGeometry = new THREE.BoxGeometry(0.8, 0.9, 1.76);
     const hood = new THREE.Mesh(hoodGeometry, bodyMaterial);
     hood.position.set(2.4, 0.8, 0);
     hood.castShadow = true;
     busGroup.add(hood);
 
-    // Front Bumper (Dark Metallic)
+    // Front Bumper
     const bumperMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 });
     const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 1.9), bumperMaterial);
     frontBumper.position.set(2.75, 0.4, 0);
@@ -84,7 +83,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     plateMesh.position.set(2.91, 0.4, 0);
     busGroup.add(plateMesh);
 
-    // Front Metallic Radiator Grill
+    // Radiator Grill
     const grillMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.1, 0.5, 1.0),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.1 })
@@ -100,7 +99,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     busRoof.castShadow = true;
     busGroup.add(busRoof);
 
-    // Top Destination Sign Board ("COLLEGE BUS")
+    // Sign Board
     const signBoard = new THREE.Mesh(
       new THREE.BoxGeometry(1.2, 0.35, 1.0),
       new THREE.MeshStandardMaterial({ color: 0x0f172a })
@@ -118,13 +117,11 @@ export default function Bus3DCanvas({ autoRotate = true }) {
       thickness: 0.2
     });
 
-    // Front Windshield (Large slanted glass)
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.95, 1.6), windowMaterial);
     windshield.rotation.z = -0.15;
     windshield.position.set(2.0, 1.6, 0);
     busGroup.add(windshield);
 
-    // Side Windows (Passenger Row)
     for (let x = -1.4; x <= 1.2; x += 0.7) {
       const windowLeft = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.05), windowMaterial);
       windowLeft.position.set(x, 1.6, 0.91);
@@ -135,7 +132,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
       busGroup.add(windowRight);
     }
 
-    // Side Rear-View Mirrors (Left & Right)
+    // Mirrors
     const mirrorMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.5 });
     const mirrorArmLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6), mirrorMat);
     mirrorArmLeft.rotation.z = Math.PI / 3;
@@ -154,7 +151,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     mirrorHeadRight.position.set(2.3, 1.6, -1.2);
     busGroup.add(mirrorHeadRight);
 
-    // Realistic LED Dual Headlights
+    // Headlights
     const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const hlLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), headlightMat);
     hlLeft.rotation.z = Math.PI / 2;
@@ -165,14 +162,13 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     hlRight.position.set(2.81, 0.85, -0.6);
     busGroup.add(hlRight);
 
-    // Spotlights for Night Headlight Beams
     const spotlightLeft = new THREE.SpotLight(0xfffbeb, 5, 20, Math.PI / 5, 0.4);
     spotlightLeft.position.set(2.85, 0.85, 0.6);
     spotlightLeft.target.position.set(15, 0, 0.6);
     scene.add(spotlightLeft);
     scene.add(spotlightLeft.target);
 
-    // 4 Detailed Wheels with Chrome Hubcaps & Rubber Tires
+    // Wheels
     const tireMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.9 });
     const hubMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.9, roughness: 0.1 });
     const wheels = [];
@@ -186,14 +182,11 @@ export default function Bus3DCanvas({ autoRotate = true }) {
 
     wheelCoords.forEach((pos) => {
       const wheelGroup = new THREE.Group();
-      
-      // Rubber Tire
       const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.35, 24), tireMat);
       tire.rotation.x = Math.PI / 2;
       tire.castShadow = true;
       wheelGroup.add(tire);
 
-      // Chrome Rim
       const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.36, 16), hubMat);
       hub.rotation.x = Math.PI / 2;
       wheelGroup.add(hub);
@@ -205,7 +198,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
 
     scene.add(busGroup);
 
-    // 4. Realistic Asphalt Road with Yellow Lines
+    // Asphalt Road
     const road = new THREE.Mesh(
       new THREE.BoxGeometry(45, 0.2, 9),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 })
@@ -214,7 +207,6 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     road.receiveShadow = true;
     scene.add(road);
 
-    // Double Center Yellow Lines
     for (let x = -20; x <= 20; x += 4) {
       const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.21, 0.12), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
       stripe1.position.set(x, -0.09, 0.15);
@@ -225,7 +217,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
       scene.add(stripe2);
     }
 
-    // 5. Floating 3D Glowing GPS Pin
+    // Floating 3D Pin
     const pinGroup = new THREE.Group();
     const pinHead = new THREE.Mesh(
       new THREE.SphereGeometry(0.65, 24, 24),
@@ -263,20 +255,20 @@ export default function Bus3DCanvas({ autoRotate = true }) {
     };
     window.addEventListener('resize', handleResize);
 
-    // Animation Loop
+    // Animation Loop with Modern Performance Timestamp (Replacing Deprecated THREE.Clock)
     let animationFrameId;
-    let clock = new THREE.Clock();
+    const startTime = performance.now();
 
-    const animate = () => {
+    const animate = (now) => {
       animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      const elapsedTime = (now - startTime) * 0.001;
 
       // Spin Wheels
       wheels.forEach((w) => {
         w.children.forEach(c => (c.rotation.y -= 0.1));
       });
 
-      // Realistic suspension rumble
+      // Suspension rumble
       busGroup.position.y = Math.sin(elapsedTime * 10) * 0.03;
 
       // Float 3D GPS Pin
@@ -292,7 +284,7 @@ export default function Bus3DCanvas({ autoRotate = true }) {
 
       renderer.render(scene, camera);
     };
-    animate();
+    animate(performance.now());
 
     return () => {
       cancelAnimationFrame(animationFrameId);
