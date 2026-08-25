@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Navigation, MapPin, Clock, Gauge, ShieldCheck } from 'lucide-react';
+import { Navigation, MapPin, Clock, Gauge, ShieldCheck, User } from 'lucide-react';
 
 // Haversine formula to compute exact distance in kilometers
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
@@ -28,7 +28,8 @@ export default function MapView({
   location = { latitude: 17.6896, longitude: 83.0024, speed: 45 },
   stops = [],
   busNumber = 'AP-31-1234',
-  routeName = 'Anakapalle → College Campus Gate'
+  routeName = 'Anakapalle → College Campus Gate',
+  driverName = 'Enrolled College Driver'
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -124,7 +125,7 @@ export default function MapView({
         busEl.innerHTML = `
           <div class="px-2.5 py-1 rounded-full bg-slate-950 text-amber-300 font-black text-[11px] border border-amber-400/60 shadow-2xl flex items-center gap-1 whitespace-nowrap mb-1">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            🚌 ${busNumber} (LIVE)
+            🚌 ${busNumber} (${driverName})
           </div>
           <div class="w-12 h-12 flex items-center justify-center bg-amber-400/20 backdrop-blur-md rounded-full border border-amber-400 shadow-xl">
             <img src="https://cdn-icons-png.flaticon.com/512/3448/3448339.png" class="w-9 h-9 drop-shadow-xl animate-bounce" alt="Bus Marker" />
@@ -259,18 +260,22 @@ export default function MapView({
         </div>
       )}
 
-      {/* Bottom Telemetry Status Bar */}
-      <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between text-[11px] text-slate-300 bg-slate-950/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-2xl">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-amber-400" />
-          <span>Route: <strong className="text-white font-semibold">{routeName}</strong></span>
+      {/* Bottom Telemetry Status Bar with Respective Selected Driver Name */}
+      <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300 bg-slate-950/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-2xl">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 text-amber-300 font-bold bg-amber-400/10 px-2.5 py-1 rounded-xl border border-amber-400/30">
+            <User className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Driver: <strong className="text-white font-black">{driverName}</strong></span>
+          </div>
+          <div className="h-3.5 w-px bg-slate-700 hidden sm:block" />
+          <div className="flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-sky-400 shrink-0" />
+            <span className="truncate">Route: <strong className="text-white font-semibold">{routeName}</strong></span>
+          </div>
         </div>
-        <div className="flex items-center gap-4 font-mono text-[11px]">
+        <div className="flex items-center gap-3 font-mono text-[11px]">
           <span>Lat: <strong className="text-amber-300">{currentLat.toFixed(4)}</strong></span>
           <span>Lng: <strong className="text-amber-300">{currentLng.toFixed(4)}</strong></span>
-          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-bold flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-emerald-400" /> FREE TILE SERVER ACTIVE
-          </span>
         </div>
       </div>
 

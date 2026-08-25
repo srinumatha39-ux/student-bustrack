@@ -6,7 +6,7 @@ import { subscribeToLocation } from '../services/socket';
 import BusCard from '../components/BusCard';
 import MapView from '../components/MapView';
 import CartoonBus from '../components/CartoonBus';
-import { Search, MapPin, Building2, Lock, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { Search, MapPin, Building2, Lock, ShieldCheck, AlertCircle, RefreshCw, User } from 'lucide-react';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -115,6 +115,7 @@ export default function StudentDashboard() {
     id: 'b1',
     bus_number: 'AP-31-1234',
     route_name: 'Campus Shuttle Route',
+    driver_name: 'Enrolled College Driver',
     stops: [
       { stop_name: 'Main Stop #1', latitude: 17.6896, longitude: 83.0024, stop_order: 1 },
       { stop_name: 'Campus Gate #2', latitude: 17.7342, longitude: 83.0780, stop_order: 2 }
@@ -170,7 +171,7 @@ export default function StudentDashboard() {
                 <h2 className="font-extrabold text-lg text-white">Live Real-Time MapLibre Vector Map</h2>
                 <p className="text-xs text-slate-400">
                   {isUnlocked ? (
-                    <>Active bus tracking: <strong className="text-amber-400">{activeMapBus.bus_number}</strong> ({activeMapBus.route_name})</>
+                    <>Bus: <strong className="text-amber-400">{activeMapBus.bus_number}</strong> • Driver: <strong className="text-white">{activeMapBus.driver_name || 'Enrolled Driver'}</strong></>
                   ) : (
                     <span className="text-rose-400 font-bold flex items-center gap-1"><Lock className="w-3.5 h-3.5 inline" /> Security Code Protected</span>
                   )}
@@ -215,6 +216,7 @@ export default function StudentDashboard() {
                 stops={activeMapBus.stops || []}
                 busNumber={activeMapBus.bus_number}
                 routeName={activeMapBus.route_name}
+                driverName={activeMapBus.driver_name || 'Enrolled College Driver'}
               />
             </div>
           ) : (
