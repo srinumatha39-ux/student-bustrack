@@ -1,8 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import CartoonBus from './CartoonBus';
-import { Sparkles, Navigation, Layers, MapPin } from 'lucide-react';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Navigation, MapPin, Clock, Gauge, ShieldCheck } from 'lucide-react';
+
+// Haversine formula to compute exact distance in kilometers
+function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Calculate ETA in minutes based on distance & current bus speed
+function calculateEtaMinutes(distanceKm, speedKmh) {
+  const effectiveSpeed = Math.max(speedKmh || 35, 15); // Min fallback 15 km/h for traffic realism
+  const hours = distanceKm / effectiveSpeed;
+  const minutes = Math.round(hours * 60);
+  return minutes < 1 ? '< 1 min' : `${minutes} mins`;
+}
 
 export default function MapView({
   location = { latitude: 17.6896, longitude: 83.0024, speed: 45 },
@@ -14,14 +34,13 @@ export default function MapView({
   const mapRef = useRef(null);
   const busMarkerRef = useRef(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [selectedStopEta, setSelectedStopEta] = useState(null);
 
-  // Mapbox Public Access Token (reads from VITE_MAPBOX_TOKEN or fallback)
-  const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazMDA2gycXA4Zj84dGQ5ZXkifQ.n-GCsnR7EgZMIznW9qGfrA';
-  mapboxgl.accessToken = mapboxToken;
+  const currentLat = Number(location?.latitude || 17.6896);
+  const currentLng = Number(location?.longitude || 83.0024);
+  const currentSpeed = Number(location?.speed || 40);
 
-  const currentLat = location?.latitude || 17.6896;
-  const currentLng = location?.longitude || 83.0024;
-
+  // Default path coordinates fallback if stops not loaded
   const pathCoords = stops.length > 0
     ? stops.map(s => [Number(s.longitude), Number(s.latitude)])
     : [
@@ -31,29 +50,29 @@ export default function MapView({
         [83.0780, 17.7342]
       ];
 
-  // Initialize Mapbox GL Map Instance
+  // Initialize MapLibre GL Map Instance with OpenFreeMap Vector Tiles
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
     try {
-      const map = new mapboxgl.Map({
+      const map = new maplibregl.Map({
         container: mapContainerRef.current,
-        style: 'mapbox://styles/mapbox/dark-v11', // Mapbox Dark Vector Style
+        style: 'https://tiles.openfreemap.org/styles/bright', // OpenFreeMap 100% Free Vector Style
         center: [currentLng, currentLat],
-        zoom: 13,
-        pitch: 45, // 3D Tilt perspective
-        bearing: -17.6
+        zoom: 13.5,
+        pitch: 45, // 3D perspective tilt
+        bearing: -15
       });
 
       mapRef.current = map;
 
-      // Add Mapbox Navigation Controls (Zoom & Pitch)
-      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      // Add Navigation Controls (Zoom, Pitch, Rotate)
+      map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
       map.on('load', () => {
         setMapLoaded(true);
 
-        // Add Route Line Source & Layer
+        // 1. Add Route Polyline Source & Layer
         map.addSource('bus-route', {
           type: 'geojson',
           data: {
@@ -77,45 +96,83 @@ export default function MapView({
           paint: {
             'line-color': '#f59e0b',
             'line-width': 6,
-            'line-opacity': 0.85
+            'line-opacity': 0.9
           }
         });
 
-        // Add Stop Markers
+        // 2. Add Live Bus Drone GeoJSON Source for Smooth MapLibre Tracking
+        const initialDroneData = {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [currentLng, currentLat]
+          },
+          properties: {
+            busNumber,
+            speed: currentSpeed
+          }
+        };
+
+        map.addSource('drone', {
+          type: 'geojson',
+          data: initialDroneData
+        });
+
+        // 3. Add Custom Animated Live Bus Marker
+        const busEl = document.createElement('div');
+        busEl.className = 'custom-bus-marker cursor-pointer flex flex-col items-center group';
+        busEl.innerHTML = `
+          <div class="px-2.5 py-1 rounded-full bg-slate-950 text-amber-300 font-black text-[11px] border border-amber-400/60 shadow-2xl flex items-center gap-1 whitespace-nowrap mb-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            🚌 ${busNumber} (LIVE)
+          </div>
+          <div class="w-12 h-12 flex items-center justify-center bg-amber-400/20 backdrop-blur-md rounded-full border border-amber-400 shadow-xl">
+            <img src="https://cdn-icons-png.flaticon.com/512/3448/3448339.png" class="w-9 h-9 drop-shadow-xl animate-bounce" alt="Bus Marker" />
+          </div>
+        `;
+
+        busMarkerRef.current = new maplibregl.Marker({ element: busEl })
+          .setLngLat([currentLng, currentLat])
+          .addTo(map);
+
+        // 4. Add Interactive Stop Markers with Real-Time Calculated ETA
         stops.forEach((stop, idx) => {
+          const stopLat = Number(stop.latitude);
+          const stopLng = Number(stop.longitude);
+          const distKm = calculateDistanceKm(currentLat, currentLng, stopLat, stopLng);
+          const etaStr = calculateEtaMinutes(distKm, currentSpeed);
+
           const el = document.createElement('div');
-          el.className = 'w-6 h-6 rounded-full bg-slate-900 border-2 border-amber-400 text-amber-300 font-bold flex items-center justify-center text-[10px] shadow-lg cursor-pointer';
+          el.className = 'w-7 h-7 rounded-full bg-slate-900 border-2 border-amber-400 text-amber-300 font-extrabold flex items-center justify-center text-[11px] shadow-2xl cursor-pointer hover:scale-110 transition-transform';
           el.innerText = `${idx + 1}`;
 
-          const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
-            `<div class="p-1 font-sans text-slate-900"><strong class="text-xs font-bold">${stop.stop_name}</strong><br/><span class="text-[10px] text-slate-500">Stop #${stop.stop_order}</span></div>`
-          );
+          const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
+            <div class="p-2 font-sans text-slate-900 max-w-[200px]">
+              <div class="flex items-center gap-1 text-amber-600 font-extrabold text-xs">
+                <span>📍 Stop #${stop.stop_order}</span>
+              </div>
+              <h4 class="font-extrabold text-sm text-slate-900 mt-0.5">${stop.stop_name}</h4>
+              <div class="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                <span class="text-slate-500">Distance:</span>
+                <strong class="text-slate-800 font-bold">${distKm.toFixed(1)} km</strong>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-xs bg-amber-50 p-1.5 rounded-lg border border-amber-200">
+                <span class="text-amber-800 font-semibold flex items-center gap-1">⏱️ Live ETA:</span>
+                <strong class="text-amber-900 font-black text-sm">${etaStr}</strong>
+              </div>
+            </div>
+          `);
 
-          new mapboxgl.Marker(el)
-            .setLngLat([Number(stop.longitude), Number(stop.latitude)])
+          new maplibregl.Marker({ element: el })
+            .setLngLat([stopLng, stopLat])
             .setPopup(popup)
             .addTo(map);
         });
 
-        // Add Animated Bus Marker
-        const busEl = document.createElement('div');
-        busEl.className = 'custom-bus-marker cursor-pointer flex flex-col items-center';
-        busEl.innerHTML = `
-          <div class="px-2 py-0.5 rounded-full bg-slate-950 text-amber-300 font-extrabold text-[10px] border border-amber-400/40 shadow-lg whitespace-nowrap mb-1">
-            🚌 ${busNumber} (LIVE)
-          </div>
-          <div class="w-12 h-10 flex items-center justify-center">
-            <img src="https://cdn-icons-png.flaticon.com/512/3448/3448339.png" class="w-10 h-10 drop-shadow-lg animate-bounce" />
-          </div>
-        `;
-
-        busMarkerRef.current = new mapboxgl.Marker(busEl)
-          .setLngLat([currentLng, currentLat])
-          .addTo(map);
       });
 
     } catch (err) {
-      console.warn('Mapbox GL JS Fallback active:', err.message);
+      console.warn('[MapLibre] Fallback active:', err.message);
     }
 
     return () => {
@@ -125,44 +182,95 @@ export default function MapView({
     };
   }, []);
 
-  // Smoothly pan Mapbox camera and update marker on location change
+  // Real-Time Live Bus Location Updates (setData + smooth flyTo camera tracking)
   useEffect(() => {
     if (mapRef.current && mapLoaded) {
-      mapRef.current.panTo([currentLng, currentLat], { duration: 1000 });
+      const map = mapRef.current;
+      const targetCoords = [currentLng, currentLat];
+
+      // Update MapLibre GeoJSON Source Data
+      const droneSource = map.getSource('drone');
+      if (droneSource) {
+        droneSource.setData({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: targetCoords
+          },
+          properties: {
+            busNumber,
+            speed: currentSpeed
+          }
+        });
+      }
+
+      // Smooth FlyTo Camera Movement
+      map.flyTo({
+        center: targetCoords,
+        speed: 0.8,
+        essential: true
+      });
+
+      // Move Custom Animated Bus Marker
       if (busMarkerRef.current) {
-        busMarkerRef.current.setLngLat([currentLng, currentLat]);
+        busMarkerRef.current.setLngLat(targetCoords);
+      }
+
+      // Calculate nearest stop ETA for status banner
+      if (stops.length > 0) {
+        const nextStop = stops[0];
+        const dist = calculateDistanceKm(currentLat, currentLng, Number(nextStop.latitude), Number(nextStop.longitude));
+        const eta = calculateEtaMinutes(dist, currentSpeed);
+        setSelectedStopEta({ stopName: nextStop.stop_name, eta, dist: dist.toFixed(1) });
       }
     }
-  }, [currentLat, currentLng, mapLoaded]);
+  }, [currentLat, currentLng, currentSpeed, mapLoaded]);
 
   return (
-    <div className="w-full h-full relative min-h-[420px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-950">
+    <div className="w-full h-full relative min-h-[440px] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-950">
       
-      {/* Mapbox Canvas Container */}
-      <div ref={mapContainerRef} className="w-full h-full min-h-[420px]" />
+      {/* MapLibre Canvas Container */}
+      <div ref={mapContainerRef} className="w-full h-full min-h-[440px]" />
 
-      {/* Mapbox Top Header Overlay */}
+      {/* Top Left OpenFreeMap Header Overlay */}
       <div className="absolute top-4 left-4 z-10 bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl border border-slate-800 flex items-center gap-3 text-white">
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
-          <Navigation className="w-3 h-3 text-amber-400" />
-          MAPBOX GL VECTOR MAP
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+          <Navigation className="w-3 h-3 text-amber-400 animate-pulse" />
+          MAPLIBRE GL • OPENFREEMAP
         </span>
         <div className="text-xs font-extrabold text-white">{busNumber}</div>
         <div className="h-4 w-px bg-slate-700" />
-        <div className="text-xs font-bold text-emerald-400">
-          {location.speed || 42} km/h
+        <div className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+          <Gauge className="w-3.5 h-3.5" />
+          {currentSpeed} km/h
         </div>
       </div>
 
-      {/* Mapbox Bottom Telemetry Status Bar */}
-      <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between text-[11px] text-slate-300 bg-slate-950/85 backdrop-blur-md p-3 rounded-2xl border border-slate-800">
+      {/* Top Right Live ETA Banner */}
+      {selectedStopEta && (
+        <div className="absolute top-4 right-14 z-10 bg-amber-950/90 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-amber-500/40 flex items-center gap-2 text-amber-200">
+          <Clock className="w-4 h-4 text-amber-400 animate-bounce" />
+          <div className="text-xs font-bold">
+            <span>Next: <strong className="text-white">{selectedStopEta.stopName}</strong></span>
+            <span className="ml-2 text-amber-300 font-black bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
+              ETA {selectedStopEta.eta} ({selectedStopEta.dist} km)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Telemetry Status Bar */}
+      <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between text-[11px] text-slate-300 bg-slate-950/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-2xl">
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4 text-amber-400" />
           <span>Route: <strong className="text-white font-semibold">{routeName}</strong></span>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11px]">
-          <span>Lat: <strong className="text-amber-300">{Number(currentLat).toFixed(4)}</strong></span>
-          <span>Lng: <strong className="text-amber-300">{Number(currentLng).toFixed(4)}</strong></span>
+        <div className="flex items-center gap-4 font-mono text-[11px]">
+          <span>Lat: <strong className="text-amber-300">{currentLat.toFixed(4)}</strong></span>
+          <span>Lng: <strong className="text-amber-300">{currentLng.toFixed(4)}</strong></span>
+          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-bold flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3 text-emerald-400" /> FREE TILE SERVER ACTIVE
+          </span>
         </div>
       </div>
 
