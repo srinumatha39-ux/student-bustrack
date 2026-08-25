@@ -483,7 +483,7 @@ app.delete('/api/students/:id', async (req, res) => {
 });
 
 // ------------------------------------------
-// BUS MANAGEMENT ROUTES
+// BUS MANAGEMENT ROUTES WITH DYNAMIC DRIVER MAPPING
 // ------------------------------------------
 app.get('/api/buses', async (req, res) => {
   try {
@@ -492,13 +492,34 @@ app.get('/api/buses', async (req, res) => {
     if (isMongoReady()) {
       const query = college_id ? { college_id } : {};
       const buses = await Bus.find(query).lean();
-      return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
+      const drivers = await Driver.find().lean();
+
+      const enrichedBuses = buses.map(b => {
+        const assignedDriver = drivers.find(d => 
+          (d.assigned_bus_id && (d.assigned_bus_id === b.bus_id || d.assigned_bus_id === String(b._id))) ||
+          (d.college_id && d.college_id === b.college_id)
+        );
+        return {
+          id: b._id,
+          bus_id: b.bus_id,
+          route_name: b.route,
+          driver_name: assignedDriver ? assignedDriver.name : (b.driver_name || 'Enrolled College Driver'),
+          ...b
+        };
+      });
+      return res.json(enrichedBuses);
     }
 
-    if (college_id) {
-      return res.json(memoryDb.buses.filter(b => b.college_id === college_id));
-    }
-    res.json(memoryDb.buses);
+    const drivers = memoryDb.drivers;
+    const buses = college_id ? memoryDb.buses.filter(b => b.college_id === college_id) : memoryDb.buses;
+    const enrichedBuses = buses.map(b => {
+      const assignedDriver = drivers.find(d => d.assigned_bus_id === b.bus_id || d.college_id === b.college_id);
+      return {
+        ...b,
+        driver_name: assignedDriver ? assignedDriver.name : (b.driver_name || 'Enrolled College Driver')
+      };
+    });
+    res.json(enrichedBuses);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -507,7 +528,7 @@ app.get('/api/buses', async (req, res) => {
 app.post('/api/buses', async (req, res) => {
   try {
     const bus_id = 'b_' + Date.now();
-    const { bus_number, bus_name, route_name, start_point, destination, estimated_time, stops, college_id } = req.body;
+    const { bus_number, bus_name, route_name, start_point, destination, estimated_time, stops, college_id, driver_name } = req.body;
 
     if (isMongoReady()) {
       const newBus = await Bus.create({
