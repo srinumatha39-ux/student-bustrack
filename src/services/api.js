@@ -44,15 +44,17 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     if (body) options.body = JSON.stringify(body);
 
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 4000);
+    const id = setTimeout(() => controller.abort(), 6000);
 
     const res = await fetch(`${API_BASE}${endpoint}`, { ...options, signal: controller.signal });
     clearTimeout(id);
 
-    if (res.ok) {
+    // Return backend JSON response directly for both success and HTTP 4xx validation errors!
+    if (res.ok || (res.status >= 400 && res.status < 500)) {
       return await res.json();
     }
-    throw new Error('API server response not ok');
+    
+    throw new Error(`Server error ${res.status}`);
   } catch (err) {
     console.warn(`[API] Connection to ${API_BASE}${endpoint} failed. Using fallback local storage.`);
     return fallbackLocalHandler(endpoint, method, body);
