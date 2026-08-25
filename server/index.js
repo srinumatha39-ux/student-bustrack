@@ -27,127 +27,36 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// In-Memory Fallback Cache
+// In-Memory Fallback Cache (Zero Demo Data)
 let memoryDb = {
-  colleges: [
-    { id: 'STMARYS', college_id: 'STMARYS', name: 'St. Marys Engineering College', security_code: 'SEC-12345' },
-    { id: 'VIGNAN', college_id: 'VIGNAN', name: 'Vignan Institute of Technology', security_code: 'SEC-99999' }
-  ],
+  colleges: [],
   admins: [],
   drivers: [],
   students: [],
-  buses: [
-    {
-      id: 'b1',
-      bus_id: 'b1',
-      college_id: 'STMARYS',
-      bus_number: 'AP-31-1234',
-      bus_name: 'Express Shuttle 1',
-      route_name: 'Anakapalle → College Campus Gate',
-      start_point: 'Anakapalle',
-      destination: 'College Campus Gate',
-      estimated_time: 45,
-      status: 'INACTIVE',
-      stops: [
-        { id: 'st1', stop_name: 'Anakapalle Ring Road', latitude: 17.6896, longitude: 83.0024, stop_order: 1 },
-        { id: 'st2', stop_name: 'Lalam Junction', latitude: 17.7021, longitude: 83.0210, stop_order: 2 },
-        { id: 'st3', stop_name: 'Gajuwaka Highway', latitude: 17.7180, longitude: 83.0450, stop_order: 3 },
-        { id: 'st4', stop_name: 'College Campus Gate', latitude: 17.7342, longitude: 83.0780, stop_order: 4 }
-      ]
-    }
-  ],
+  buses: [],
   active_trips: {},
   reports: []
-};
-
-// Automatic Initial MongoDB Seeder (Prevents Empty Database Data Loss)
-const seedInitialData = async () => {
-  try {
-    if (!isMongoReady()) return;
-
-    const busCount = await Bus.countDocuments();
-    if (busCount === 0) {
-      console.log('🌱 Seeding initial database records to MongoDB Atlas...');
-
-      // Seed Initial Admin & College
-      const passHash = await bcrypt.hash('admin123', 10);
-      await Admin.create({
-        college_id: 'STMARYS',
-        college_name: 'St. Marys Engineering College',
-        name: 'Dr. Rajesh Sharma',
-        password_hash: passHash,
-        security_code: 'SEC-12345'
-      });
-
-      // Seed Initial Bus
-      await Bus.create({
-        bus_id: 'b1',
-        college_id: 'STMARYS',
-        bus_number: 'AP-31-1234',
-        bus_name: 'Express Shuttle 1',
-        route: 'Anakapalle → College Campus Gate',
-        estimated_journey_time: 45,
-        status: 'INACTIVE',
-        stops: [
-          { id: 'st1', stop_name: 'Anakapalle Ring Road', latitude: 17.6896, longitude: 83.0024, stop_order: 1 },
-          { id: 'st2', stop_name: 'Lalam Junction', latitude: 17.7021, longitude: 83.0210, stop_order: 2 },
-          { id: 'st3', stop_name: 'Gajuwaka Highway', latitude: 17.7180, longitude: 83.0450, stop_order: 3 },
-          { id: 'st4', stop_name: 'College Campus Gate', latitude: 17.7342, longitude: 83.0780, stop_order: 4 }
-        ]
-      });
-
-      // Seed Initial Driver
-      const drvPassHash = await bcrypt.hash('driver123', 10);
-      await Driver.create({
-        driver_id: 'DRV-01',
-        name: 'Ramesh Kumar',
-        password_hash: drvPassHash,
-        secret_key: 'SEC-12345',
-        college_id: 'STMARYS',
-        assigned_bus_id: 'b1'
-      });
-
-      // Seed Initial Student
-      const stuPassHash = await bcrypt.hash('student123', 10);
-      await Student.create({
-        roll_no: '21001A0501',
-        name: 'Ananya Sharma',
-        college_id: 'STMARYS',
-        password_hash: stuPassHash,
-        secret_key: 'SEC-12345'
-      });
-
-      console.log('✅ Default initial data successfully seeded in MongoDB Atlas!');
-    }
-  } catch (err) {
-    console.warn('⚠️ Seeding check notice:', err.message);
-  }
 };
 
 // Database Middleware: Ensures MongoDB Connection on Every Request
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api')) {
-    const connected = await connectDB();
-    if (connected) {
-      await seedInitialData();
-    }
+    await connectDB();
   }
   next();
 });
 
-// Helper: Fetch All Registered Colleges
+// Helper: Fetch All Admin-Registered Colleges Only
 const getRegisteredColleges = async () => {
   if (isMongoReady()) {
     const admins = await Admin.find({}, 'college_id college_name security_code name createdAt').lean();
-    if (admins.length > 0) {
-      return admins.map(a => ({
-        id: a.college_id,
-        college_id: a.college_id,
-        name: a.college_name,
-        security_code: a.security_code,
-        admin_name: a.name
-      }));
-    }
+    return admins.map(a => ({
+      id: a.college_id,
+      college_id: a.college_id,
+      name: a.college_name,
+      security_code: a.security_code,
+      admin_name: a.name
+    }));
   }
   return memoryDb.colleges;
 };
@@ -168,7 +77,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// GET REGISTERED COLLEGES
+// GET ADMIN-REGISTERED COLLEGES ONLY
 app.get('/api/colleges', async (req, res) => {
   try {
     const list = await getRegisteredColleges();
@@ -261,7 +170,7 @@ app.post('/api/auth/admin/login', async (req, res) => {
 
     let admin = memoryDb.admins.find(a => a.college_id === college_id);
     if (admin && (await bcrypt.compare(password, admin.password_hash))) {
-      return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, college_name: admin.college_name, name: admin.name } });
+      return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, name: admin.college_name, name: admin.name } });
     }
 
     res.status(401).json({ success: false, message: 'Invalid Admin ID or Password.' });
@@ -284,7 +193,7 @@ app.post('/api/auth/admin/reset-password', async (req, res) => {
       }
       admin.password_hash = await bcrypt.hash(new_password, 10);
       await admin.save();
-      return res.json({ success: true, message: 'Admin password reset successfully! You can now sign in.' });
+      return res.json({ success: true, message: 'Admin password reset successfully! You can now sign in with your new password.' });
     }
 
     let admin = memoryDb.admins.find(a => a.college_id === college_id && a.security_code === security_code);
@@ -401,9 +310,7 @@ app.get('/api/drivers', async (req, res) => {
   try {
     if (isMongoReady()) {
       const drivers = await Driver.find().lean();
-      if (drivers.length > 0) {
-        return res.json(drivers.map(d => ({ id: d._id, ...d })));
-      }
+      return res.json(drivers.map(d => ({ id: d._id, ...d })));
     }
     res.json(memoryDb.drivers);
   } catch (error) {
@@ -536,9 +443,7 @@ app.get('/api/students', async (req, res) => {
   try {
     if (isMongoReady()) {
       const students = await Student.find().lean();
-      if (students.length > 0) {
-        return res.json(students.map(s => ({ id: s._id, roll_number: s.roll_no, ...s })));
-      }
+      return res.json(students.map(s => ({ id: s._id, roll_number: s.roll_no, ...s })));
     }
     res.json(memoryDb.students);
   } catch (error) {
@@ -587,9 +492,7 @@ app.get('/api/buses', async (req, res) => {
     if (isMongoReady()) {
       const query = college_id ? { college_id } : {};
       const buses = await Bus.find(query).lean();
-      if (buses.length > 0) {
-        return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
-      }
+      return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
     }
 
     if (college_id) {
@@ -609,7 +512,7 @@ app.post('/api/buses', async (req, res) => {
     if (isMongoReady()) {
       const newBus = await Bus.create({
         bus_id,
-        college_id: college_id || 'STMARYS',
+        college_id: college_id || 'DEFAULT',
         bus_number,
         bus_name,
         route: route_name || `${start_point} → ${destination}`,
@@ -620,7 +523,7 @@ app.post('/api/buses', async (req, res) => {
       return res.json({ success: true, bus: newBus });
     }
 
-    const newBus = { id: bus_id, bus_id, college_id: college_id || 'STMARYS', ...req.body, status: 'INACTIVE', stops: stops || [] };
+    const newBus = { id: bus_id, bus_id, college_id: college_id || 'DEFAULT', ...req.body, status: 'INACTIVE', stops: stops || [] };
     memoryDb.buses.push(newBus);
     io.emit('buses-updated', memoryDb.buses);
     res.json({ success: true, bus: newBus });
@@ -848,10 +751,7 @@ const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, async () => {
     console.log(`🚀 Multi-College Server running with Password Reset on port ${PORT}`);
-    const connected = await connectDB();
-    if (connected) {
-      await seedInitialData();
-    }
+    await connectDB();
   });
 }
 
