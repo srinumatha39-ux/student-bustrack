@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Smartphone, X, CheckCircle2 } from 'lucide-react';
+import { Download, Smartphone, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function InstallPwaButton() {
@@ -35,17 +35,24 @@ export default function InstallPwaButton() {
   }, []);
 
   const handleInstallClick = async () => {
+    // 1. Direct Native PWA Browser Prompt Trigger
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setIsInstalled(true);
         setDeferredPrompt(null);
+        return;
       }
-    } else {
-      // Fallback instruction for iOS / Safari / Unsupported desktop prompt
-      alert('📲 To install this PWA App:\n1. Tap the Share/Menu button in your browser.\n2. Tap "Add to Home Screen" or "Install App".');
     }
+
+    // 2. Direct File Download Trigger for immediate app shortcut / package download
+    const link = document.createElement('a');
+    link.href = '/BusTrack3D.url';
+    link.download = 'BusTrack3D.url';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (isInstalled || !showBanner) {
@@ -60,7 +67,7 @@ export default function InstallPwaButton() {
         exit={{ opacity: 0, y: 50, scale: 0.9 }}
         className="fixed bottom-5 right-5 z-50 max-w-xs sm:max-w-sm"
       >
-        <div className="relative group bg-slate-900/95 backdrop-blur-2xl p-4 rounded-3xl border-2 border-amber-400 shadow-2xl shadow-amber-500/30 text-white flex items-center gap-3.5">
+        <div className="relative group bg-slate-900/95 backdrop-blur-2xl p-4 rounded-3xl border-2 border-amber-400 shadow-2xl shadow-amber-500/40 text-white flex items-center gap-3.5">
           
           {/* Close button */}
           <button
@@ -80,23 +87,23 @@ export default function InstallPwaButton() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-1.5">
               <span className="font-extrabold text-xs text-white tracking-tight">
-                Install BusTrack 3D
+                BusTrack 3D App
               </span>
               <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                PWA
+                DIRECT
               </span>
             </div>
 
             <p className="text-[11px] text-slate-300 leading-tight">
-              Add to Home Screen for fast offline tracking & full-screen mode!
+              Click below to trigger direct installation & download!
             </p>
 
             <button
               onClick={handleInstallClick}
-              className="mt-2 w-full py-2 px-3 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-md shadow-amber-500/30 transition-all flex items-center justify-center gap-1.5 group-hover:scale-105"
+              className="mt-2 w-full py-2.5 px-3 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-lg shadow-amber-500/30 transition-all flex items-center justify-center gap-2 group-hover:scale-105"
             >
-              <Download className="w-3.5 h-3.5 animate-bounce" />
-              <span>INSTALL APP NOW</span>
+              <Download className="w-4 h-4 animate-bounce" />
+              <span>DIRECT DOWNLOAD APP NOW</span>
             </button>
           </div>
 
