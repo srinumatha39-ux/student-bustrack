@@ -27,36 +27,127 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Serverless / API DB Middleware: Attempt MongoDB Atlas connection on each API request
-app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    await connectDB();
-  }
-  next();
-});
-
-// Dynamic Admin-Created Colleges & In-Memory Store
+// In-Memory Fallback Cache
 let memoryDb = {
-  colleges: [],
+  colleges: [
+    { id: 'STMARYS', college_id: 'STMARYS', name: 'St. Marys Engineering College', security_code: 'SEC-12345' },
+    { id: 'VIGNAN', college_id: 'VIGNAN', name: 'Vignan Institute of Technology', security_code: 'SEC-99999' }
+  ],
   admins: [],
   drivers: [],
   students: [],
-  buses: [],
+  buses: [
+    {
+      id: 'b1',
+      bus_id: 'b1',
+      college_id: 'STMARYS',
+      bus_number: 'AP-31-1234',
+      bus_name: 'Express Shuttle 1',
+      route_name: 'Anakapalle → College Campus Gate',
+      start_point: 'Anakapalle',
+      destination: 'College Campus Gate',
+      estimated_time: 45,
+      status: 'INACTIVE',
+      stops: [
+        { id: 'st1', stop_name: 'Anakapalle Ring Road', latitude: 17.6896, longitude: 83.0024, stop_order: 1 },
+        { id: 'st2', stop_name: 'Lalam Junction', latitude: 17.7021, longitude: 83.0210, stop_order: 2 },
+        { id: 'st3', stop_name: 'Gajuwaka Highway', latitude: 17.7180, longitude: 83.0450, stop_order: 3 },
+        { id: 'st4', stop_name: 'College Campus Gate', latitude: 17.7342, longitude: 83.0780, stop_order: 4 }
+      ]
+    }
+  ],
   active_trips: {},
   reports: []
 };
 
-// Helper: Fetch all Admin-Created Colleges
+// Automatic Initial MongoDB Seeder (Prevents Empty Database Data Loss)
+const seedInitialData = async () => {
+  try {
+    if (!isMongoReady()) return;
+
+    const busCount = await Bus.countDocuments();
+    if (busCount === 0) {
+      console.log('🌱 Seeding initial database records to MongoDB Atlas...');
+
+      // Seed Initial Admin & College
+      const passHash = await bcrypt.hash('admin123', 10);
+      await Admin.create({
+        college_id: 'STMARYS',
+        college_name: 'St. Marys Engineering College',
+        name: 'Dr. Rajesh Sharma',
+        password_hash: passHash,
+        security_code: 'SEC-12345'
+      });
+
+      // Seed Initial Bus
+      await Bus.create({
+        bus_id: 'b1',
+        college_id: 'STMARYS',
+        bus_number: 'AP-31-1234',
+        bus_name: 'Express Shuttle 1',
+        route: 'Anakapalle → College Campus Gate',
+        estimated_journey_time: 45,
+        status: 'INACTIVE',
+        stops: [
+          { id: 'st1', stop_name: 'Anakapalle Ring Road', latitude: 17.6896, longitude: 83.0024, stop_order: 1 },
+          { id: 'st2', stop_name: 'Lalam Junction', latitude: 17.7021, longitude: 83.0210, stop_order: 2 },
+          { id: 'st3', stop_name: 'Gajuwaka Highway', latitude: 17.7180, longitude: 83.0450, stop_order: 3 },
+          { id: 'st4', stop_name: 'College Campus Gate', latitude: 17.7342, longitude: 83.0780, stop_order: 4 }
+        ]
+      });
+
+      // Seed Initial Driver
+      const drvPassHash = await bcrypt.hash('driver123', 10);
+      await Driver.create({
+        driver_id: 'DRV-01',
+        name: 'Ramesh Kumar',
+        password_hash: drvPassHash,
+        secret_key: 'SEC-12345',
+        college_id: 'STMARYS',
+        assigned_bus_id: 'b1'
+      });
+
+      // Seed Initial Student
+      const stuPassHash = await bcrypt.hash('student123', 10);
+      await Student.create({
+        roll_no: '21001A0501',
+        name: 'Ananya Sharma',
+        college_id: 'STMARYS',
+        password_hash: stuPassHash,
+        secret_key: 'SEC-12345'
+      });
+
+      console.log('✅ Default initial data successfully seeded in MongoDB Atlas!');
+    }
+  } catch (err) {
+    console.warn('⚠️ Seeding check notice:', err.message);
+  }
+};
+
+// Database Middleware: Ensures MongoDB Connection on Every Request
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    const connected = await connectDB();
+    if (connected) {
+      await seedInitialData();
+    }
+  }
+  next();
+});
+
+// Helper: Fetch All Registered Colleges
 const getRegisteredColleges = async () => {
   if (isMongoReady()) {
     const admins = await Admin.find({}, 'college_id college_name security_code name createdAt').lean();
-    return admins.map(a => ({
-      id: a.college_id,
-      college_id: a.college_id,
-      name: a.college_name,
-      security_code: a.security_code,
-      admin_name: a.name
-    }));
+    if (admins.length > 0) {
+      return admins.map(a => ({
+        id: a.college_id,
+        college_id: a.college_id,
+        name: a.college_name,
+        security_code: a.security_code,
+        admin_name: a.name
+      }));
+    }
   }
   return memoryDb.colleges;
 };
@@ -77,7 +168,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// GET DYNAMIC ADMIN-CREATED COLLEGES ONLY
+// GET REGISTERED COLLEGES
 app.get('/api/colleges', async (req, res) => {
   try {
     const list = await getRegisteredColleges();
@@ -94,20 +185,16 @@ app.post('/api/colleges/verify-code', async (req, res) => {
     
     if (isMongoReady()) {
       const admin = await Admin.findOne({ college_id });
-      if (!admin) {
-        return res.status(404).json({ success: false, message: 'College not found.' });
+      if (admin) {
+        if (admin.security_code === security_code) {
+          return res.json({ success: true, message: 'College Security Code Verified!' });
+        }
+        return res.status(401).json({ success: false, message: 'Incorrect Security Code for this College.' });
       }
-      if (admin.security_code === security_code) {
-        return res.json({ success: true, message: 'College Security Code Verified!' });
-      }
-      return res.status(401).json({ success: false, message: 'Incorrect Security Code for this College.' });
     }
 
     const college = memoryDb.colleges.find(c => c.college_id === college_id);
-    if (!college) {
-      return res.status(404).json({ success: false, message: 'College not found.' });
-    }
-    if (college.security_code === security_code) {
+    if (college && college.security_code === security_code) {
       return res.json({ success: true, message: 'College Security Code Verified!' });
     }
     res.status(401).json({ success: false, message: 'Incorrect Security Code for this College.' });
@@ -154,7 +241,7 @@ app.post('/api/auth/admin/register', async (req, res) => {
     });
 
     io.emit('colleges-updated', memoryDb.colleges);
-    res.json({ success: true, user: { role: 'admin', id: newAdmin.id, college_id: newAdmin.college_id, name: newAdmin.college_name, name: newAdmin.name } });
+    res.json({ success: true, user: { role: 'admin', id: newAdmin.id, college_id: newAdmin.college_id, name: newAdmin.college_name } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -173,9 +260,8 @@ app.post('/api/auth/admin/login', async (req, res) => {
     }
 
     let admin = memoryDb.admins.find(a => a.college_id === college_id);
-    if (admin) {
-      const isMatch = await bcrypt.compare(password, admin.password_hash);
-      if (isMatch) return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, name: admin.college_name, name: admin.name } });
+    if (admin && (await bcrypt.compare(password, admin.password_hash))) {
+      return res.json({ success: true, user: { role: 'admin', id: admin.id, college_id: admin.college_id, college_name: admin.college_name, name: admin.name } });
     }
 
     res.status(401).json({ success: false, message: 'Invalid Admin ID or Password.' });
@@ -184,7 +270,6 @@ app.post('/api/auth/admin/login', async (req, res) => {
   }
 });
 
-// ADMIN RESET FORGOT PASSWORD
 app.post('/api/auth/admin/reset-password', async (req, res) => {
   try {
     const { college_id, security_code, new_password } = req.body;
@@ -197,10 +282,9 @@ app.post('/api/auth/admin/reset-password', async (req, res) => {
       if (!admin) {
         return res.status(401).json({ success: false, message: 'Invalid College ID or Security Code verification failed.' });
       }
-      const new_hash = await bcrypt.hash(new_password, 10);
-      admin.password_hash = new_hash;
+      admin.password_hash = await bcrypt.hash(new_password, 10);
       await admin.save();
-      return res.json({ success: true, message: 'Admin password reset successfully! You can now sign in with your new password.' });
+      return res.json({ success: true, message: 'Admin password reset successfully! You can now sign in.' });
     }
 
     let admin = memoryDb.admins.find(a => a.college_id === college_id && a.security_code === security_code);
@@ -230,7 +314,7 @@ app.post('/api/auth/driver/register', async (req, res) => {
       if (existing) return res.status(400).json({ success: false, message: 'Driver ID already registered.' });
 
       const password_hash = await bcrypt.hash(password, 10);
-      const driver = await Driver.create({ driver_id, name, password_hash, secret_key, college_id });
+      const driver = await Driver.create({ driver_id, name, password_hash, secret_key, college_id, assigned_bus_id: 'b1' });
       return res.json({
         success: true,
         user: { role: 'driver', id: driver._id, driver_id: driver.driver_id, name: driver.name, college_id: driver.college_id, assigned_bus_id: driver.assigned_bus_id }
@@ -275,11 +359,8 @@ app.post('/api/auth/driver/login', async (req, res) => {
     }
 
     let driver = memoryDb.drivers.find(d => d.driver_id === driver_id && d.secret_key === secret_key);
-    if (driver) {
-      const isMatch = await bcrypt.compare(password, driver.password_hash);
-      if (isMatch) {
-        return res.json({ success: true, user: { role: 'driver', id: driver.id, driver_id: driver.driver_id, name: driver.name, college_id: driver.college_id, assigned_bus_id: driver.assigned_bus_id } });
-      }
+    if (driver && (await bcrypt.compare(password, driver.password_hash))) {
+      return res.json({ success: true, user: { role: 'driver', id: driver.id, driver_id: driver.driver_id, name: driver.name, college_id: driver.college_id, assigned_bus_id: driver.assigned_bus_id } });
     }
 
     res.status(401).json({ success: false, message: 'Invalid Driver ID, Password, or Secret Key.' });
@@ -288,7 +369,6 @@ app.post('/api/auth/driver/login', async (req, res) => {
   }
 });
 
-// DRIVER RESET FORGOT PASSWORD
 app.post('/api/auth/driver/reset-password', async (req, res) => {
   try {
     const { driver_id, secret_key, new_password } = req.body;
@@ -318,11 +398,17 @@ app.post('/api/auth/driver/reset-password', async (req, res) => {
 });
 
 app.get('/api/drivers', async (req, res) => {
-  if (isMongoReady()) {
-    const drivers = await Driver.find().lean();
-    return res.json(drivers.map(d => ({ id: d._id, ...d })));
+  try {
+    if (isMongoReady()) {
+      const drivers = await Driver.find().lean();
+      if (drivers.length > 0) {
+        return res.json(drivers.map(d => ({ id: d._id, ...d })));
+      }
+    }
+    res.json(memoryDb.drivers);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  res.json(memoryDb.drivers);
 });
 
 app.post('/api/drivers', async (req, res) => {
@@ -344,12 +430,16 @@ app.post('/api/drivers', async (req, res) => {
 });
 
 app.delete('/api/drivers/:id', async (req, res) => {
-  if (isMongoReady()) {
-    await Driver.findByIdAndDelete(req.params.id);
-    return res.json({ success: true });
+  try {
+    if (isMongoReady()) {
+      await Driver.findByIdAndDelete(req.params.id);
+      return res.json({ success: true });
+    }
+    memoryDb.drivers = memoryDb.drivers.filter(d => d.id !== req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  memoryDb.drivers = memoryDb.drivers.filter(d => d.id !== req.params.id);
-  res.json({ success: true });
 });
 
 // ------------------------------------------
@@ -404,9 +494,8 @@ app.post('/api/auth/student/login', async (req, res) => {
     }
 
     let student = memoryDb.students.find(s => s.roll_number === roll_number && s.secret_key === secret_key);
-    if (student) {
-      const isMatch = await bcrypt.compare(password, student.password_hash);
-      if (isMatch) return res.json({ success: true, user: { role: 'student', id: student.id, roll_number: student.roll_number, name: student.name, college_id: student.college_id } });
+    if (student && (await bcrypt.compare(password, student.password_hash))) {
+      return res.json({ success: true, user: { role: 'student', id: student.id, roll_number: student.roll_number, name: student.name, college_id: student.college_id } });
     }
 
     res.status(401).json({ success: false, message: 'Invalid Roll Number, Password, or College Security Code.' });
@@ -415,7 +504,6 @@ app.post('/api/auth/student/login', async (req, res) => {
   }
 });
 
-// STUDENT RESET FORGOT PASSWORD
 app.post('/api/auth/student/reset-password', async (req, res) => {
   try {
     const { roll_number, secret_key, new_password } = req.body;
@@ -445,11 +533,17 @@ app.post('/api/auth/student/reset-password', async (req, res) => {
 });
 
 app.get('/api/students', async (req, res) => {
-  if (isMongoReady()) {
-    const students = await Student.find().lean();
-    return res.json(students.map(s => ({ id: s._id, roll_number: s.roll_no, ...s })));
+  try {
+    if (isMongoReady()) {
+      const students = await Student.find().lean();
+      if (students.length > 0) {
+        return res.json(students.map(s => ({ id: s._id, roll_number: s.roll_no, ...s })));
+      }
+    }
+    res.json(memoryDb.students);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  res.json(memoryDb.students);
 });
 
 app.post('/api/students', async (req, res) => {
@@ -471,30 +565,40 @@ app.post('/api/students', async (req, res) => {
 });
 
 app.delete('/api/students/:id', async (req, res) => {
-  if (isMongoReady()) {
-    await Student.findByIdAndDelete(req.params.id);
-    return res.json({ success: true });
+  try {
+    if (isMongoReady()) {
+      await Student.findByIdAndDelete(req.params.id);
+      return res.json({ success: true });
+    }
+    memoryDb.students = memoryDb.students.filter(s => s.id !== req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  memoryDb.students = memoryDb.students.filter(s => s.id !== req.params.id);
-  res.json({ success: true });
 });
 
 // ------------------------------------------
 // BUS MANAGEMENT ROUTES
 // ------------------------------------------
 app.get('/api/buses', async (req, res) => {
-  const { college_id } = req.query;
+  try {
+    const { college_id } = req.query;
 
-  if (isMongoReady()) {
-    const query = college_id ? { college_id } : {};
-    const buses = await Bus.find(query).lean();
-    return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
-  }
+    if (isMongoReady()) {
+      const query = college_id ? { college_id } : {};
+      const buses = await Bus.find(query).lean();
+      if (buses.length > 0) {
+        return res.json(buses.map(b => ({ id: b._id, bus_id: b.bus_id, route_name: b.route, ...b })));
+      }
+    }
 
-  if (college_id) {
-    return res.json(memoryDb.buses.filter(b => b.college_id === college_id));
+    if (college_id) {
+      return res.json(memoryDb.buses.filter(b => b.college_id === college_id));
+    }
+    res.json(memoryDb.buses);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  res.json(memoryDb.buses);
 });
 
 app.post('/api/buses', async (req, res) => {
@@ -505,7 +609,7 @@ app.post('/api/buses', async (req, res) => {
     if (isMongoReady()) {
       const newBus = await Bus.create({
         bus_id,
-        college_id: college_id || 'DEFAULT',
+        college_id: college_id || 'STMARYS',
         bus_number,
         bus_name,
         route: route_name || `${start_point} → ${destination}`,
@@ -516,7 +620,7 @@ app.post('/api/buses', async (req, res) => {
       return res.json({ success: true, bus: newBus });
     }
 
-    const newBus = { id: bus_id, bus_id, college_id: college_id || 'DEFAULT', ...req.body, status: 'INACTIVE', stops: stops || [] };
+    const newBus = { id: bus_id, bus_id, college_id: college_id || 'STMARYS', ...req.body, status: 'INACTIVE', stops: stops || [] };
     memoryDb.buses.push(newBus);
     io.emit('buses-updated', memoryDb.buses);
     res.json({ success: true, bus: newBus });
@@ -547,26 +651,34 @@ app.put('/api/buses/:id', async (req, res) => {
 });
 
 app.delete('/api/buses/:id', async (req, res) => {
-  if (isMongoReady()) {
-    await Bus.findByIdAndDelete(req.params.id);
-    io.emit('buses-updated', await Bus.find().lean());
-    return res.json({ success: true });
-  }
+  try {
+    if (isMongoReady()) {
+      await Bus.findByIdAndDelete(req.params.id);
+      io.emit('buses-updated', await Bus.find().lean());
+      return res.json({ success: true });
+    }
 
-  memoryDb.buses = memoryDb.buses.filter(b => b.id !== req.params.id);
-  io.emit('buses-updated', memoryDb.buses);
-  res.json({ success: true });
+    memoryDb.buses = memoryDb.buses.filter(b => b.id !== req.params.id);
+    io.emit('buses-updated', memoryDb.buses);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 // ------------------------------------------
 // ISSUE REPORTS (WITH 24H TTL INDEX)
 // ------------------------------------------
 app.get('/api/reports', async (req, res) => {
-  if (isMongoReady()) {
-    const reports = await IssueReport.find().sort({ createdAt: -1 }).lean();
-    return res.json(reports.map(r => ({ id: r._id, description: r.message, ...r })));
+  try {
+    if (isMongoReady()) {
+      const reports = await IssueReport.find().sort({ createdAt: -1 }).lean();
+      return res.json(reports.map(r => ({ id: r._id, description: r.message, ...r })));
+    }
+    res.json(memoryDb.reports);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-  res.json(memoryDb.reports);
 });
 
 app.post('/api/reports', async (req, res) => {
@@ -610,32 +722,40 @@ app.post('/api/reports', async (req, res) => {
 });
 
 app.put('/api/reports/:id/resolve', async (req, res) => {
-  if (isMongoReady()) {
-    const report = await IssueReport.findByIdAndUpdate(req.params.id, { status: 'RESOLVED' }, { new: true });
-    io.emit('reports-updated', await IssueReport.find().lean());
-    return res.json({ success: true, report });
-  }
+  try {
+    if (isMongoReady()) {
+      const report = await IssueReport.findByIdAndUpdate(req.params.id, { status: 'RESOLVED' }, { new: true });
+      io.emit('reports-updated', await IssueReport.find().lean());
+      return res.json({ success: true, report });
+    }
 
-  const report = memoryDb.reports.find(r => r.id === req.params.id);
-  if (report) {
-    report.status = 'RESOLVED';
-    io.emit('reports-updated', memoryDb.reports);
-    res.json({ success: true, report });
-  } else {
-    res.status(404).json({ message: 'Report not found' });
+    const report = memoryDb.reports.find(r => r.id === req.params.id);
+    if (report) {
+      report.status = 'RESOLVED';
+      io.emit('reports-updated', memoryDb.reports);
+      res.json({ success: true, report });
+    } else {
+      res.status(404).json({ message: 'Report not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
 app.delete('/api/reports/:id', async (req, res) => {
-  if (isMongoReady()) {
-    await IssueReport.findByIdAndDelete(req.params.id);
-    io.emit('reports-updated', await IssueReport.find().lean());
-    return res.json({ success: true });
-  }
+  try {
+    if (isMongoReady()) {
+      await IssueReport.findByIdAndDelete(req.params.id);
+      io.emit('reports-updated', await IssueReport.find().lean());
+      return res.json({ success: true });
+    }
 
-  memoryDb.reports = memoryDb.reports.filter(r => r.id !== req.params.id);
-  io.emit('reports-updated', memoryDb.reports);
-  res.json({ success: true });
+    memoryDb.reports = memoryDb.reports.filter(r => r.id !== req.params.id);
+    io.emit('reports-updated', memoryDb.reports);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 // ==========================================
@@ -646,7 +766,6 @@ io.on('connection', (socket) => {
 
   socket.emit('active-trips', memoryDb.active_trips);
 
-  // Driver starts trip
   socket.on('start-trip', async (data) => {
     const { bus_id, driver_id, initial_location } = data;
     const trip_id = 'trip_' + Date.now();
@@ -678,7 +797,6 @@ io.on('connection', (socket) => {
     io.emit('bus-status-changed', { bus_id, status: 'LIVE', trip: tripData });
   });
 
-  // Driver streams GPS coordinate update
   socket.on('location-update', async (data) => {
     const { bus_id, latitude, longitude, speed, isDemo } = data;
 
@@ -705,7 +823,6 @@ io.on('connection', (socket) => {
     io.emit('bus-location-changed', { bus_id, latitude, longitude, speed: speed || 40, updated_at: new Date().toISOString(), isDemo });
   });
 
-  // Driver stops trip
   socket.on('stop-trip', async (data) => {
     const { bus_id } = data;
 
@@ -729,8 +846,12 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(PORT, () => {
+  server.listen(PORT, async () => {
     console.log(`🚀 Multi-College Server running with Password Reset on port ${PORT}`);
+    const connected = await connectDB();
+    if (connected) {
+      await seedInitialData();
+    }
   });
 }
 
