@@ -1,13 +1,19 @@
 {
-  "name": "Smart College Bus 3D Tracking",
+  "name": "Smart College Bus 3D Tracking System",
   "short_name": "BusTrack 3D",
-  "description": "Real-time Multi-College Bus & Fleet 3D Tracking System",
+  "description": "Real-Time Multi-College Bus & Fleet 3D Map Tracking System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#f59e0b",
   "orientation": "portrait-primary",
   "icons": [
+    {
+      "src": "/bus-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon-192.png",
       "sizes": "192x192",

@@ -1,64 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { usePwa } from '../context/PwaContext';
 import { Download, Smartphone, X, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function InstallPwaButton() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [showBanner, setShowBanner] = useState(true);
+  const { isStandalone, installApp } = usePwa();
+  const [dismissed, setDismissed] = useState(false);
 
-  useEffect(() => {
-    // Check if app is already running in PWA standalone mode
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-      setIsInstalled(true);
-    }
-
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowBanner(true);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-      setShowBanner(false);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-    };
-  }, []);
-
-  const handleExeDownload = async () => {
-    // 1. Direct Executable (.EXE) File Download
-    const link = document.createElement('a');
-    link.href = '/BusTrack3D_App.exe';
-    link.download = 'BusTrack3D_App.exe';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // 2. Trigger Native Browser PWA Installation Prompt if available
-    if (deferredPrompt) {
-      try {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-          setIsInstalled(true);
-          setDeferredPrompt(null);
-        }
-      } catch (err) {
-        console.warn('PWA prompt execution:', err);
-      }
-    }
-  };
-
-  if (isInstalled || !showBanner) {
+  if (isStandalone || dismissed) {
     return null;
   }
 
@@ -74,7 +23,7 @@ export default function InstallPwaButton() {
           
           {/* Close button */}
           <button
-            onClick={() => setShowBanner(false)}
+            onClick={() => setDismissed(true)}
             className="absolute -top-2 -right-2 p-1 rounded-full bg-slate-800 text-slate-400 hover:text-white border border-slate-700 shadow-md transition-colors"
             title="Dismiss Install Prompt"
           >
@@ -90,23 +39,23 @@ export default function InstallPwaButton() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-1.5">
               <span className="font-black text-xs text-white tracking-tight">
-                BusTrack 3D Desktop App
+                BusTrack 3D App
               </span>
               <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-0.5">
-                <ShieldCheck className="w-2.5 h-2.5 fill-slate-950" /> EXE FILE
+                <ShieldCheck className="w-2.5 h-2.5 fill-slate-950" /> PWA
               </span>
             </div>
 
             <p className="text-[11px] text-slate-300 leading-tight">
-              Click below to download direct executable (.EXE) app launcher!
+              Install app on Home Screen for fast offline tracking & full screen!
             </p>
 
             <button
-              onClick={handleExeDownload}
+              onClick={installApp}
               className="mt-2 w-full py-2.5 px-3 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-xl shadow-amber-500/40 transition-all flex items-center justify-center gap-2 group-hover:scale-105"
             >
               <Download className="w-4 h-4 animate-bounce" />
-              <span>DOWNLOAD APP (.EXE)</span>
+              <span>INSTALL APP NOW</span>
             </button>
           </div>
 
