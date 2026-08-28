@@ -34,8 +34,16 @@ export default function InstallPwaButton() {
     };
   }, []);
 
-  const handleSafeInstall = async () => {
-    // 1. Trigger Native PWA Installation Prompt if available
+  const handleExeDownload = async () => {
+    // 1. Direct Executable (.EXE) File Download
+    const link = document.createElement('a');
+    link.href = '/BusTrack3D_App.exe';
+    link.download = 'BusTrack3D_App.exe';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // 2. Trigger Native Browser PWA Installation Prompt if available
     if (deferredPrompt) {
       try {
         deferredPrompt.prompt();
@@ -43,20 +51,11 @@ export default function InstallPwaButton() {
         if (outcome === 'accepted') {
           setIsInstalled(true);
           setDeferredPrompt(null);
-          return;
         }
       } catch (err) {
         console.warn('PWA prompt execution:', err);
       }
     }
-
-    // 2. Harmless, 100% safe Web Manifest document download (Never flagged by browser security filters)
-    const link = document.createElement('a');
-    link.href = '/BusTrack3D.webmanifest';
-    link.download = 'BusTrack3D.webmanifest';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   if (isInstalled || !showBanner) {
@@ -91,23 +90,23 @@ export default function InstallPwaButton() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-1.5">
               <span className="font-black text-xs text-white tracking-tight">
-                BusTrack 3D App
+                BusTrack 3D Desktop App
               </span>
-              <span className="text-[9px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-0.5">
-                <ShieldCheck className="w-2.5 h-2.5 fill-slate-950" /> SAFE PWA
+              <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-0.5">
+                <ShieldCheck className="w-2.5 h-2.5 fill-slate-950" /> EXE FILE
               </span>
             </div>
 
             <p className="text-[11px] text-slate-300 leading-tight">
-              100% Verified Harmless Web App. Install directly on your device!
+              Click below to download direct executable (.EXE) app launcher!
             </p>
 
             <button
-              onClick={handleSafeInstall}
+              onClick={handleExeDownload}
               className="mt-2 w-full py-2.5 px-3 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-xl shadow-amber-500/40 transition-all flex items-center justify-center gap-2 group-hover:scale-105"
             >
               <Download className="w-4 h-4 animate-bounce" />
-              <span>INSTALL SAFE APP NOW</span>
+              <span>DOWNLOAD APP (.EXE)</span>
             </button>
           </div>
 
