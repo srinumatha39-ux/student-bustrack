@@ -1,19 +1,16 @@
-const CACHE_NAME = 'bustrack-pwa-v2';
+const CACHE_NAME = 'bustrack-pwa-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/bus-icon.svg',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/bus-icon.svg'
 ];
 
 // Install Event: Pre-cache App Shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Pre-caching Application Shell');
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
   self.skipWaiting();
@@ -24,80 +21,66 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => {
-            console.log('[Service Worker] Removing old cache:', key);
-            return caches.delete(key);
-          })
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-// Fetch Event: Caching Strategy & Network Handling
+// Fetch Event: Bulletproof Network-First Caching Strategy
 self.addEventListener('fetch', (event) => {
+  // Only handle GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
-  // Exclude API requests & WebSocket / Socket.IO from service worker cache
-  if (url.pathname.startsWith('/api') || url.pathname.includes('socket.io')) {
+  // Bypass service worker for API endpoints, WebSocket, and chrome-extensions
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname.includes('socket.io') ||
+    url.protocol.startsWith('chrome-extension')
+  ) {
     return;
   }
 
-  // Network-First for HTML Navigations, Cache Fallback when Offline
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
-        .catch(() => {
-          return caches.match('/index.html') || caches.match(event.request);
-        })
-    );
-    return;
-  }
-
-  // Cache-First for Static Assets (Images, Fonts, Scripts, Stylesheets)
+  // Network-First with Cache Fallback
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch background update for cache freshness
-        fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-            }
-          })
-          .catch(() => {/* Offline silent fallback */});
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful static asset responses
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
+        return response;
+      })
+      .catch(async () => {
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        if (event.request.mode === 'navigate') {
+          const cachedIndex = await caches.match('/index.html');
+          if (cachedIndex) return cachedIndex;
+        }
+        return new Response('Offline: Network connection lost.', {
+          status: 533,
+          headers: { 'Content-Type': 'text/plain' }
         });
-        return networkResponse;
-      });
-    })
+      })
   );
 });
 
-// Push Notification Event Handler Architecture
+// Push Notification Architecture
 self.addEventListener('push', (event) => {
   let data = { title: 'BusTrack 3D Announcement', body: 'New fleet update available!' };
   try {
-    if (event.data) {
-      data = event.data.json();
-    }
+    if (event.data) data = event.data.json();
   } catch {
     if (event.data) data.body = event.data.text();
   }
